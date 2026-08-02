@@ -61,13 +61,15 @@ def render_processor():
                         
             st.write("---")
             
-            # चेक करें कि कम से कम एक मुख्य इनवॉइस अपलोड हो
             valid_batches = [b for b in uploaded_batches if b[1] is not None]
             
             if valid_batches and st.button("🚀 Process & Generate Excel with Supporting Docs", type="primary", use_container_width=True):
                 with st.spinner(f"कुल {len(valid_batches)} इनवॉइस सेट प्रोसेस हो रहे हैं..."):
                     rules = shipper_info.get("mapping_rules", {})
                     item_table_rules = shipper_info.get("item_table_rules", {})
+                    
+                    # 👈 Get the selected parser rule name for this shipper (e.g. Rule_Welspun, Rule_BKT)
+                    active_parser_rule = shipper_info.get("item_table_rule_name", "Rule_Welspun")
                     
                     igst_cfg = shipper_info.get("igst_config", {})
                     lut_kws = igst_cfg.get("lut_keywords", "")
@@ -84,7 +86,6 @@ def render_processor():
                     excel_write_row = 2
                     
                     for inv_sr_number, inv_file, gst_file, deec_file in valid_batches:
-                        # 1. मुख्य इनवॉइस का टेक्स्ट रीड करना (चाहे वह PDF हो या Excel)[cite: 5]
                         pdf_text = ""
                         pdf_lines = []
                         
@@ -97,13 +98,11 @@ def render_processor():
                                         pdf_text += t + "\n"
                                         pdf_lines.extend(t.split("\n"))
                         else:
-                            # यदि मुख्य इनवॉइस Excel फाइल है तो उसे सपोर्टिंग इंजन की तरह रीड करें[cite: 3, 5]
                             excel_text, _ = extract_data_from_supporting_file(inv_file)
                             if excel_text:
                                 pdf_text = excel_text
                                 pdf_lines = excel_text.split("\n")
                         
-                        # 2. सपोर्टिंग फाइलों (GST/DEEC) का टेक्स्ट एक्सट्रैक्शन तैयार करना[cite: 3, 5]
                         gst_text, _ = extract_data_from_supporting_file(gst_file) if gst_file else ("", None)
                         deec_text, _ = extract_data_from_supporting_file(deec_file) if deec_file else ("", None)
                         
@@ -113,7 +112,6 @@ def render_processor():
                         
                         summary_row = 1 + inv_sr_number
                         
-                        # 3. 🎯 सभी हेडर रूल्स को प्रोसेस करना (केवल एडमिन पैनल के Target Cell के आधार पर)[cite: 3, 5]
                         for field, r_info in rules.items():
                             kw = r_info.get("keyword", "").strip()
                             if kw.startswith("'") and len(kw) > 1:
@@ -143,7 +141,6 @@ def render_processor():
                                     
                             inv_data_dict[field.lower()] = found_val
                             
-                            # 🎯 यहाँ सीधे एडमिन पैनल में दिए गए टारगेट सेल (जैसे AZ, AW आदि) में वैल्यू जाएगी[cite: 3, 5]
                             if target_cell and "dynamic" not in target_cell.lower():
                                 if target_cell.isalpha():
                                     cell_to_write = f"{target_cell}{summary_row}"
@@ -173,7 +170,6 @@ def render_processor():
                         if current_inv_date:
                             ws[f"AJ{summary_row}"] = current_inv_date
 
-                        # आइटम टेबल मैपिंग[cite: 3, 5]
                         resolved_item_rules = {}
                         for i_name, i_info in item_table_rules.items():
                             i_type = i_info.get("type", "")
@@ -194,7 +190,9 @@ def render_processor():
                                 "rule": actual_rule_val
                             }
 
-                        parsed_items = extract_item_table_rows(pdf_lines)
+                        # 👈 Pass active_parser_rule to the item extractor
+                        parsed_items = extract_item_table_rows(pdf_lines, parser_rule=active_parser_rule)
+                        
                         ws, overall_item_sr, excel_write_row = map_items_to_excel_dynamic(
                             ws, parsed_items, resolved_item_rules,
                             inv_sr_no=inv_sr_number, 
@@ -204,7 +202,8 @@ def render_processor():
                             default_invoice_date=current_inv_date,
                             pdf_text=pdf_text,
                             lut_kws=lut_kws,
-                            paid_kws=paid_kws
+                            paid_kws=paid_kws,
+                            parser_rule=active_parser_rule
                         )
 
                     output = BytesIO()
