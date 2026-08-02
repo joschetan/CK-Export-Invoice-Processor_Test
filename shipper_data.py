@@ -447,14 +447,18 @@ def render_shipper_data():
                         "file_base64": b64_str
                     }
                 
-                with st.spinner("⏳ गूगल शीट में JSON फॉर्मेट में सुरक्षित सेव हो रहा है..."):
-                    success = push_all_to_sheet(shippers_payload)
-                    if success:
-                        fetch_cached_sheet_data.clear()
-                        st.session_state["sheet_data_loaded"] = False
-                        st.success("🎉 आपके सभी रूल्स और टेम्पलेट अब गूगल शीट पर 1 शिपर = 1 रो (JSON स्ट्रक्चर) के रूप में परमानेंट सेव हो गए हैं!")
-                        st.balloons()
-                    else:
-                        st.error("❌ सेव करते समय एरर आया!")
+                # 🛑 यहाँ सुनिश्चित किया जा रहा है कि डेटा डिक्शनरी पूरी तरह भरी हो
+                if not shippers_payload:
+                    st.error("❌ कोई डेटा सेव करने के लिए नहीं है!")
+                else:
+                    with st.spinner("⏳ गूगल शीट में JSON फॉर्मेट में सुरक्षित सेव हो रहा है..."):
+                        success = push_all_to_sheet(shippers_payload)
+                        if success:
+                            fetch_cached_sheet_data.clear()
+                            st.session_state["sheet_data_loaded"] = False
+                            st.success("🎉 आपके सभी रूल्स और टेम्पलेट अब गूगल शीट पर 1 शिपर = 1 रो (JSON स्ट्रक्चर) के रूप में परमानेंट सेव हो गए हैं!")
+                            st.balloons()
+                        else:
+                            st.error("❌ सेव करते समय एरर आया!")
 
             render_universal_test_suite(selected_shipper)
