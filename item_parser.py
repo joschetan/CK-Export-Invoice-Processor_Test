@@ -2,7 +2,24 @@ import re
 import streamlit as st
 from pdf_engine import apply_value_replacement
 
-def extract_item_table_rows(pdf_lines):
+def extract_item_table_rows(pdf_lines, parser_rule="Rule_Welspun"):
+    """
+    Dispatcher function that routes item table parsing based on the shipper's selected parser rule.
+    """
+    rule_name = str(parser_rule).strip()
+    
+    if rule_name == "Rule_Welspun":
+        return _extract_welspun_items(pdf_lines)
+    elif rule_name == "Rule_BKT":
+        return _extract_bkt_items(pdf_lines)
+    else:
+        # Fallback / Default rule (Welspun as default safety)
+        return _extract_welspun_items(pdf_lines)
+
+def _extract_welspun_items(pdf_lines):
+    """
+    Original Welspun Item Table Parser Logic (Working perfectly like butter).
+    """
     parsed_items = []
     
     for line in pdf_lines:
@@ -37,6 +54,15 @@ def extract_item_table_rows(pdf_lines):
                 
     return parsed_items
 
+def _extract_bkt_items(pdf_lines):
+    """
+    Placeholder / Future parser rule for BKT or other tyre/material group invoice formats.
+    Will be implemented precisely when requested.
+    """
+    parsed_items = []
+    # Future custom parsing logic for BKT format goes here
+    return parsed_items
+
 @st.dialog("⚠️ Urgent: Manual IGST Status Required")
 def get_manual_igst_choice(invoice_identifier):
     st.warning(f"⚠️ इन्वॉइस **`{invoice_identifier}`** में स्पष्ट रूप से LUT या Paid (P) का टेक्स्ट नहीं मिला!")
@@ -48,7 +74,7 @@ def get_manual_igst_choice(invoice_identifier):
         st.session_state[f"resolved_igst_{invoice_identifier}"] = selected_choice
         st.rerun()
 
-def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_overall_sr=1, start_excel_row=2, default_invoice_no="", default_invoice_date="", pdf_text="", lut_kws="", paid_kws=""):
+def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_overall_sr=1, start_excel_row=2, default_invoice_no="", default_invoice_date="", pdf_text="", lut_kws="", paid_kws="", parser_rule="Rule_Welspun"):
     curr_row = start_excel_row
     overall_sr = start_overall_sr
     
@@ -91,7 +117,6 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
 
     extracted_commodities = []
     if has_commodity_ui_rule and pdf_text:
-        # 🎯 सुधरा हुआ लॉजिक: अब यह ब्रैकेट के अंदर की वैल्यू (जैसे 1, 2, 3) पकड़ेगा और अगले सीरियल या अंत तक का पूरा टेक्स्ट बिना काटे उठाएगा
         comm_matches = re.findall(r'\((\d+)\)(.*?)(?=\(\d+\)|Freight Terms|$)', pdf_text, re.DOTALL)
         if comm_matches:
             seen_srs = set()
@@ -99,7 +124,6 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
                 sr_clean = c_no.strip()
                 if sr_clean not in seen_srs:
                     seen_srs.add(sr_clean)
-                    # सभी एक्स्ट्रा स्पेसेस और लाइन ब्रेक्स को सिंगल स्पेस में बदलकर पूरा टेक्स्ट साफ़ करना
                     clean_desc = re.sub(r'\s+', ' ', c_desc).strip()
                     extracted_commodities.append({
                         "sr": sr_clean,
