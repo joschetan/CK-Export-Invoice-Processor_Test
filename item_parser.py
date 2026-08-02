@@ -1,67 +1,18 @@
 import re
 import streamlit as st
 from pdf_engine import apply_value_replacement
+from parser_welspun import extract_welspun_items
+from parser_bkt import extract_bkt_items
 
 def extract_item_table_rows(pdf_lines, parser_rule="Rule_Welspun"):
-    """
-    Dispatcher function that routes item table parsing based on the shipper's selected parser rule.
-    """
     rule_name = str(parser_rule).strip()
     
     if rule_name == "Rule_Welspun":
-        return _extract_welspun_items(pdf_lines)
+        return extract_welspun_items(pdf_lines)
     elif rule_name == "Rule_BKT":
-        return _extract_bkt_items(pdf_lines)
+        return extract_bkt_items(pdf_lines)
     else:
-        # Fallback / Default rule (Welspun as default safety)
-        return _extract_welspun_items(pdf_lines)
-
-def _extract_welspun_items(pdf_lines):
-    """
-    Original Welspun Item Table Parser Logic (Working perfectly like butter).
-    """
-    parsed_items = []
-    
-    for line in pdf_lines:
-        line_str = line.strip()
-        if re.match(r'^\d{8}\b', line_str):
-            parts = [p.strip() for p in line_str.split() if p.strip()]
-            if len(parts) >= 3:
-                item_dict = {
-                    "raw_parts": parts,
-                    "hs_code": parts[0]
-                }
-                
-                nums = re.findall(r'[\d,]+\.\d{2,3}', line_str)
-                item_dict["nums"] = nums
-                
-                dbk_match = re.search(r'\b\d{6}[A-Za-z]?\b|\b\d{10}[A-Za-z]?\b', line_str)
-                item_dict["dbk_found"] = dbk_match.group(0) if dbk_match else ""
-
-                if len(nums) > 0:
-                    first_num = nums[0]
-                    start_pos = len(parts[0])
-                    end_pos = line_str.find(first_num)
-                    if end_pos > start_pos:
-                        desc_text = line_str[start_pos:end_pos].strip()
-                        if item_dict["dbk_found"]:
-                            desc_text = desc_text.replace(item_dict["dbk_found"], "").strip()
-                        item_dict["description_text"] = desc_text
-                else:
-                    item_dict["description_text"] = " ".join(parts[1:]) if len(parts) > 1 else ""
-                        
-                parsed_items.append(item_dict)
-                
-    return parsed_items
-
-def _extract_bkt_items(pdf_lines):
-    """
-    Placeholder / Future parser rule for BKT or other tyre/material group invoice formats.
-    Will be implemented precisely when requested.
-    """
-    parsed_items = []
-    # Future custom parsing logic for BKT format goes here
-    return parsed_items
+        return extract_welspun_items(pdf_lines)
 
 @st.dialog("⚠️ Urgent: Manual IGST Status Required")
 def get_manual_igst_choice(invoice_identifier):
