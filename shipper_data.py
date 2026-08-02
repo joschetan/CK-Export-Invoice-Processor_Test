@@ -21,7 +21,7 @@ def ensure_default_shipper():
             "uploaded_files": {},
             "mapping_rules": {},
             "item_table_rules": {},
-            "item_table_rule_name": "Rule_Welspun",  # 👈 यहाँ Welspun के लिए डिफ़ॉल्ट रूल सेट कर दिया है
+            "item_table_rule_name": "Rule_Welspun",
             "igst_config": {"lut_keywords": "", "paid_keywords": ""}
         }
 
@@ -232,7 +232,6 @@ def render_shipper_data():
             st.write(f"### ⚙️ प्रोफाइल सेटअप और रूल्स: **{selected_shipper}**")
             shipper_info = st.session_state["shipper_database"][selected_shipper]
             
-            # 🎯 Shipper-Wise Item Table Parser Rule Selector Dropdown (Admin Control)
             st.subheader("📋 Select Item Table Parser Rule (Shipper Template)")
             current_parser_rule = shipper_info.get("item_table_rule_name", "Rule_Welspun")
             parser_rule_options = ["Rule_Welspun", "Rule_BKT", "Rule_Custom_3", "Rule_Custom_4", "Rule_Custom_5"]
@@ -519,7 +518,6 @@ def render_shipper_data():
                             "RuleKind": "item"
                         })
                     
-                    # 👈 Save Parser Rule Name to Sheet
                     p_rule_name = s_data.get("item_table_rule_name", "Rule_Welspun")
                     rules_payload.append({
                         "ShipperName": s_name, "FieldName": "PARSER_RULE_NAME", "Keyword": p_rule_name,
