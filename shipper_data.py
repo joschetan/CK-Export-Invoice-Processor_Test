@@ -36,7 +36,7 @@ def fetch_data_from_google_sheet(show_toast=False):
             if show_toast: st.error("⚠️ गूगल शीट से डेटा नहीं मिला.")
             return
 
-        # 🔍 सीधे पुरानी 'Shipper_Rules' शीट के फ्लैट डेटा को पढ़कर स्क्रीन के लिए सेट करेंगे
+        # 🔍 पुरानी 'Shipper_Rules' शीट के फ्लैट डेटा को पढ़कर स्क्रीन पर सारे रूल्स वापस लाना
         rules_list = data.get("rules", [])
         
         if isinstance(rules_list, list) and len(rules_list) > 1:
@@ -74,7 +74,12 @@ def fetch_data_from_google_sheet(show_toast=False):
                     
                     shipper_target = st.session_state["shipper_database"][target_key]
 
-                    if "item" in rule_kind:
+                    if "igst_config" in rule_kind or f_name.lower() in ["lut_keywords", "paid_keywords"]:
+                        if f_name.lower() == "lut_keywords":
+                            shipper_target.setdefault("igst_config", {})["lut_keywords"] = kw_val
+                        elif f_name.lower() == "paid_keywords":
+                            shipper_target.setdefault("igst_config", {})["paid_keywords"] = kw_val
+                    elif "item" in rule_kind:
                         if f_name == "PARSER_RULE_NAME":
                             shipper_target["item_table_rule_name"] = kw_val
                         else:
@@ -97,6 +102,12 @@ def fetch_data_from_google_sheet(show_toast=False):
                             "logic": logic_val,
                             "fallback": fb_val
                         }
+
+        # टेम्पलेट फाइल लोड करना
+        for s_key in st.session_state["shipper_database"].keys():
+            t_bytes = load_template_bytes_from_sheet(s_key)
+            if t_bytes:
+                st.session_state["shipper_database"][s_key].setdefault("uploaded_files", {})["Full Job Excel Format File"] = t_bytes
 
         if show_toast: st.toast("✅ गूगल शीट से सारे रूल्स सफलतापूर्वक लोड हो गए!")
     except Exception as e:
@@ -299,6 +310,16 @@ def render_shipper_data():
                 updated_rules[edited_name] = {"keyword": ky, "position": pos, "cell": cl, "match_mode": m_mode, "stop_kw": stop_kw, "filter": final_flt, "logic": "Main Invoice", "fallback": fb_val}
                 
             shipper_info["mapping_rules"] = updated_rules
+
+            st.write("---")
+            st.subheader("🛡️ Column V Auto-Detection Configurator (LUT vs Paid 'P')")
+            igst_cfg = shipper_info.get("igst_config", {})
+            col_lut, col_paid = st.columns(2)
+            with col_lut:
+                updated_lut_kws = st.text_area("📌 LUT Detection Keywords:", value=igst_cfg.get("lut_keywords", ""), key=f"lut_kw_{selected_shipper}")
+            with col_paid:
+                updated_paid_kws = st.text_area("📌 Paid (P) Detection Keywords:", value=igst_cfg.get("paid_keywords", ""), key=f"paid_kw_{selected_shipper}")
+            shipper_info["igst_config"] = {"lut_keywords": updated_lut_kws, "paid_keywords": updated_paid_kws}
 
             st.write("---")
             c_head, c_add_btn = st.columns([7, 3])
