@@ -68,7 +68,6 @@ def render_processor():
                     rules = shipper_info.get("mapping_rules", {})
                     item_table_rules = shipper_info.get("item_table_rules", {})
                     
-                    # 👈 Get the selected parser rule name for this shipper (e.g. Rule_Welspun, Rule_BKT)
                     active_parser_rule = shipper_info.get("item_table_rule_name", "Rule_Welspun")
                     
                     igst_cfg = shipper_info.get("igst_config", {})
@@ -190,7 +189,6 @@ def render_processor():
                                 "rule": actual_rule_val
                             }
 
-                        # 👈 Pass active_parser_rule to the item extractor
                         parsed_items = extract_item_table_rows(pdf_lines, parser_rule=active_parser_rule)
                         
                         ws, overall_item_sr, excel_write_row = map_items_to_excel_dynamic(
