@@ -21,6 +21,7 @@ def ensure_default_shipper():
             "uploaded_files": {},
             "mapping_rules": {},
             "item_table_rules": {},
+            "item_table_rule_name": "Rule_Welspun",  # 👈 यहाँ Welspun के लिए डिफ़ॉल्ट रूल सेट कर दिया है
             "igst_config": {"lut_keywords": "", "paid_keywords": ""}
         }
 
@@ -43,8 +44,6 @@ def fetch_data_from_google_sheet(show_toast=False):
                 if not row or len(row) < 11:
                     continue
                 
-                # A: ShipperName (0), B: FieldName (1), C: Keyword (2), D: Position (3), E: Cell (4), F: MatchMode (5)
-                # G: Stop/Word (6), H: Filter/Logic (7), I: Main Invoice (8), J: Fallback (9), K: RuleKind (10)
                 s_name = str(row[0]).strip() if row[0] is not None else ""
                 f_name = str(row[1]).strip() if row[1] is not None else ""
                 kw_val = str(row[2]).strip() if row[2] is not None else ""
@@ -69,6 +68,7 @@ def fetch_data_from_google_sheet(show_toast=False):
                             "uploaded_files": {},
                             "mapping_rules": {},
                             "item_table_rules": {},
+                            "item_table_rule_name": "Rule_Welspun",
                             "igst_config": {"lut_keywords": "", "paid_keywords": ""}
                         }
                     
@@ -78,11 +78,14 @@ def fetch_data_from_google_sheet(show_toast=False):
                         elif f_name.lower() == "paid_keywords":
                             st.session_state["shipper_database"][target_key].setdefault("igst_config", {})["paid_keywords"] = kw_val
                     elif "item" in rule_kind:
-                        st.session_state["shipper_database"][target_key].setdefault("item_table_rules", {})[f_name] = {
-                            "col": cell_val,
-                            "type": match_val,
-                            "rule": kw_val
-                        }
+                        if f_name == "PARSER_RULE_NAME":
+                            st.session_state["shipper_database"][target_key]["item_table_rule_name"] = kw_val
+                        else:
+                            st.session_state["shipper_database"][target_key].setdefault("item_table_rules", {})[f_name] = {
+                                "col": cell_val,
+                                "type": match_val,
+                                "rule": kw_val
+                            }
                     else:
                         if not flt_val or flt_val == "":
                             flt_val = "None"
@@ -212,6 +215,7 @@ def render_shipper_data():
                         "uploaded_files": {},
                         "mapping_rules": {},
                         "item_table_rules": {},
+                        "item_table_rule_name": "Rule_Welspun",
                         "igst_config": {"lut_keywords": "", "paid_keywords": ""}
                     }
                     st.success(f"🎉 नया शिपर '{s_clean}' सफलतापूर्वक जुड़ गया है! अब नीचे ड्रॉपडाउन से इसे चुनकर कॉन्फ़िगर करें.")
@@ -228,6 +232,21 @@ def render_shipper_data():
             st.write(f"### ⚙️ प्रोफाइल सेटअप और रूल्स: **{selected_shipper}**")
             shipper_info = st.session_state["shipper_database"][selected_shipper]
             
+            # 🎯 Shipper-Wise Item Table Parser Rule Selector Dropdown (Admin Control)
+            st.subheader("📋 Select Item Table Parser Rule (Shipper Template)")
+            current_parser_rule = shipper_info.get("item_table_rule_name", "Rule_Welspun")
+            parser_rule_options = ["Rule_Welspun", "Rule_BKT", "Rule_Custom_3", "Rule_Custom_4", "Rule_Custom_5"]
+            rule_idx = parser_rule_options.index(current_parser_rule) if current_parser_rule in parser_rule_options else 0
+            
+            selected_parser_rule = st.selectbox(
+                "इस शिपर की आइटम टेबल किस रूल/फॉर्मेट से पार्स होगी?",
+                parser_rule_options,
+                index=rule_idx,
+                key=f"parser_rule_sel_{selected_shipper}"
+            )
+            shipper_info["item_table_rule_name"] = selected_parser_rule
+            
+            st.write("---")
             st.subheader("📁 1. टेम्पलेट फ़ाइल अपलोड")
             
             has_file = "Full Job Excel Format File" in shipper_info.get("uploaded_files", {})
@@ -499,6 +518,14 @@ def render_shipper_data():
                             "Filter": "None", "Logic": "None", "Fallback": "",
                             "RuleKind": "item"
                         })
+                    
+                    # 👈 Save Parser Rule Name to Sheet
+                    p_rule_name = s_data.get("item_table_rule_name", "Rule_Welspun")
+                    rules_payload.append({
+                        "ShipperName": s_name, "FieldName": "PARSER_RULE_NAME", "Keyword": p_rule_name,
+                        "Position": "Right (आगे)", "Cell": "", "MatchMode": "ParserRule", "StopKw": "",
+                        "Filter": "None", "Logic": "None", "Fallback": "", "RuleKind": "item"
+                    })
                     
                     igst_data = s_data.get("igst_config", {})
                     rules_payload.append({
