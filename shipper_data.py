@@ -58,12 +58,12 @@ def fetch_data_from_google_sheet(show_toast=False):
             shipper_info["item_table_rule_name"] = s_data.get("item_table_rule_name", "Rule_Welspun")
             shipper_info["igst_config"] = s_data.get("igst_config", {"lut_keywords": "", "paid_keywords": ""})
 
-            # कॉलम C से टेम्पलेट बाइट्स लोड करना
+            # टेम्पलेट बाइट्स लोड करना
             t_bytes = load_template_bytes_from_sheet(s_name)
             if t_bytes:
                 shipper_info.setdefault("uploaded_files", {})["Full Job Excel Format File"] = t_bytes
 
-        if show_toast: st.toast("✅ गूगल शीट के नए डेटाबेस से रूल्स लोड हो गए!")
+        if show_toast: st.toast("✅ गूगल शीट से सारे रूल्स सफलतापर्पूर्वक लोड हो गए!")
     except Exception as e:
         if show_toast: st.error(f"फ़ैच एरर: {str(e)}")
 
@@ -321,7 +321,7 @@ def render_shipper_data():
                 shippers_payload = {}
                 for s_name, s_data in st.session_state["shipper_database"].items():
                     tpl_bytes = s_data.get("uploaded_files", {}).get("Full Job Excel Format File", b"")
-                    b64_str = base64.b64encode(tpl_bytes).decode('utf-8') if isinstance(tpl_bytes, bytes) and len(tpl_bytes) > 0 else ""
+                    b64_str = base64.b64encode(tpl_bytes).decode('utf-8') if isinstance(tpl_bytes, bytes) and len(tpl_bytes) > 0 else ''
                         
                     shippers_payload[s_name] = {
                         "mapping_rules": s_data.get("mapping_rules", {}),
@@ -331,12 +331,12 @@ def render_shipper_data():
                         "file_base64": b64_str
                     }
                 
-                with st.spinner("⏳ गूगल शीट में रूल्स (कॉलम B) और टेम्पलेट (कॉलम C) सुरक्षित सेव हो रहे हैं..."):
+                with st.spinner("⏳ गूगल शीट में रूल्स और टेम्पलेट सेव हो रहे हैं..."):
                     success = push_all_to_sheet(shippers_payload)
                     if success:
                         fetch_cached_sheet_data.clear()
                         st.session_state["sheet_data_loaded"] = False
-                        st.success("🎉 सफलता! रूल्स कॉलम B में और टेम्पलेट फाइल कॉलम C में परमानेंट सेव हो गए हैं!")
+                        st.success("🎉 सफलता! रूल्स और टेम्पलेट सेव हो गए हैं!")
                         st.balloons()
                     else:
                         st.error("❌ सेव करते समय एरर आया!")
