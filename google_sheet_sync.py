@@ -6,7 +6,7 @@ from io import BytesIO
 import openpyxl
 import gzip
 
-WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwEsmWdnkVW3H7_fD99vPMrqhvmY6iJHP1ZooKuwDlj2VE4cht_FBgFyem9xDRFlbjuNw/exec"
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwYVVWbqNZbzTOujVmip41KlID-rf9zEQLy_JM04ZEhUL-kixwRMD9nbPnOrZ46Fmz3/exec"
 
 def get_val_case_insensitive(d, *keys, default=""):
     if not isinstance(d, dict):
@@ -21,9 +21,9 @@ def get_val_case_insensitive(d, *keys, default=""):
 
 @st.cache_data(show_spinner=False)
 def fetch_all_from_sheet():
-    """गूगल शीट से सारे रूल्स और टेम्पलेट फेच करता है"""
+    """गूगल शीट से सारे रूल्स और टेम्पलेट फेच करता है (कम्प्रैस्ड या नॉर्मल दोनों सपोर्ट के साथ)"""
     try:
-        response = requests.get(f"{WEB_APP_URL}?action=get_data", timeout=15)
+        response = requests.get(f"{WEB_APP_URL}?action=get_data", timeout=20)
         if response.status_code == 200:
             res_text = response.text.strip()
             if res_text.startswith("<"):
@@ -36,10 +36,13 @@ def fetch_all_from_sheet():
 def clear_sheet_cache():
     fetch_all_from_sheet.clear()
 
-def push_all_to_sheet(shippers_data):
-    """बड़ी फाइलों को Gzip से कम्प्रैस करके गूगल शीट पर पोस्ट करता है"""
+def push_all_to_sheet(shippers_json_payload):
+    """बड़ी फाइलों और रूल्स को Gzip से कम्प्रैस करके गूगल शीट पर पोस्ट करता है"""
     try:
-        json_data_str = json.dumps({"action": "save_shipper_json", "shippers_data": shippers_data})
+        json_data_str = json.dumps({
+            "action": "save_shipper_json",
+            "shippers_data": shippers_json_payload
+        })
         compressed_bytes = gzip.compress(json_data_str.encode('utf-8'))
         b64_payload = base64.b64encode(compressed_bytes).decode('utf-8')
         
@@ -57,31 +60,31 @@ def push_all_to_sheet(shippers_data):
         return False
 
 def load_template_bytes_from_sheet(shipper_name):
-    """गूगल शीट से शिपर की Base64 फाइल को डिकोड करके बाइट्स लौटाता है"""
+    """गूगल शीट के कॉलम C से शिपर की Base64 फाइल को डिकोड करके बाइट्स लौटाता है"""
     data = fetch_all_from_sheet()
     if not data:
         return None
     
     shippers_dict = data.get("shippers", {})
-    for s_name, s_obj in shippers_dict.items():
-        if s_name.lower().strip() == shipper_name.lower().strip():
-            b64_str = s_obj.get("file_base64", "")
-            if b64_str and len(b64_str.strip()) > 0:
-                try:
-                    clean_b64 = b64_str.lstrip("'").strip().replace(" ", "+")
-                    missing_padding = len(clean_b64) % 4
-                    if missing_padding:
-                        clean_b64 += '=' * (4 - missing_padding)
-                    
-                    decoded_bytes = base64.b64decode(clean_b64)
-                    if decoded_bytes.startswith(b'PK'):
-                        return decoded_bytes
-                except Exception:
-                    pass
+    if shipper_name in shippers_dict:
+        s_data = shippers_dict[shipper_name]
+        b64_str = s_data.get("file_base64", "")
+        if b64_str and len(b64_str.strip()) > 0:
+            try:
+                clean_b64 = b64_str.lstrip("'").strip().replace(" ", "+")
+                missing_padding = len(clean_b64) % 4
+                if missing_padding:
+                    clean_b64 += '=' * (4 - missing_padding)
+                
+                decoded_bytes = base64.b64decode(clean_b64)
+                if decoded_bytes.startswith(b'PK'):
+                    return decoded_bytes
+            except Exception:
+                pass
     return None
 
 def load_template_from_sheet(shipper_name):
-    """गूगल शीट से शिपर की फाइल को openpyxl Workbook में बदलता है"""
+    """पुराना फंक्शन जो वैसे का वैसा रखा गया है"""
     raw_bytes = load_template_bytes_from_sheet(shipper_name)
     if raw_bytes:
         try:
