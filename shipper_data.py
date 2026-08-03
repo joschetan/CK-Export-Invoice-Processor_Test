@@ -63,7 +63,7 @@ def fetch_data_from_google_sheet(show_toast=False):
             if t_bytes:
                 shipper_info.setdefault("uploaded_files", {})["Full Job Excel Format File"] = t_bytes
 
-        if show_toast: st.toast("✅ गूगल शीट से कॉलम B और C का डेटा सफलतापूर्वक लोड हो गया!")
+        if show_toast: st.toast("✅ गूगल शीट के नए डेटाबेस से रूल्स लोड हो गए!")
     except Exception as e:
         if show_toast: st.error(f"फ़ैच एरर: {str(e)}")
 
