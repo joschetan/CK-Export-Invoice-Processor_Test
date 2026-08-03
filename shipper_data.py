@@ -10,8 +10,6 @@ from test_suite import render_universal_test_suite
 from google_sheet_sync import fetch_all_from_sheet, push_rules_to_sheet, push_template_file_to_sheet, get_val_case_insensitive, load_template_bytes_from_sheet
 from igst_config_sync import fetch_igst_config_from_sheet
 
-WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwYVVWbqNZbzTOujVmip41KlID-rf9zEQLy_JM04ZEhUL-kixwRMD9nbPnOrZ46Fmz3/exec"[cite: 4]
-
 def ensure_default_shipper():
     if "shipper_database" not in st.session_state:
         st.session_state["shipper_database"] = {}
