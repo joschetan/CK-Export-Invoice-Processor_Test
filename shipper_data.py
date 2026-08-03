@@ -29,7 +29,6 @@ def fetch_cached_sheet_data():
     return fetch_all_from_sheet()
 
 def fetch_data_from_google_sheet(show_toast=False):
-    """गूगल शीट के 'Shipper_JSON_Database' से JSON डेटा और टेम्पलेट्स फेच करता है"""
     ensure_default_shipper()
     try:
         data = fetch_cached_sheet_data()
@@ -61,21 +60,15 @@ def fetch_data_from_google_sheet(show_toast=False):
                 shipper_info["item_table_rules"] = s_data.get("item_table_rules", {})
                 shipper_info["item_table_rule_name"] = s_data.get("item_table_rule_name", "Rule_Welspun")
                 shipper_info["igst_config"] = s_data.get("igst_config", {"lut_keywords": "", "paid_keywords": ""})
-
-            # कॉलम C से टेम्पलेट बाइट्स लोड करना
-            t_bytes = load_template_bytes_from_sheet(s_name)
-            if t_bytes:
-                shipper_info.setdefault("uploaded_files", {})["Full Job Excel Format File"] = t_bytes
-
-        for s_key in st.session_state["shipper_database"].keys():
-            igst_fetched = fetch_igst_config_from_sheet(s_key)
-            if igst_fetched and isinstance(igst_fetched, dict):
-                current_igst = st.session_state["shipper_database"][s_key].get("igst_config", {})
-                if not current_igst.get("lut_keywords"):
-                    current_igst["lut_keywords"] = igst_fetched.get("lut_keywords", "")
-                if not current_igst.get("paid_keywords"):
-                    current_igst["paid_keywords"] = igst_fetched.get("paid_keywords", "")
-                st.session_state["shipper_database"][s_key]["igst_config"] = current_igst
+                
+                b64_file = s_data.get("file_base64", "")
+                if b64_file:
+                    try:
+                        decoded_tpl = base64.b64decode(b64_file)
+                        if decoded_tpl:
+                            shipper_info.setdefault("uploaded_files", {})["Full Job Excel Format File"] = decoded_tpl
+                    except Exception:
+                        pass
 
         if show_toast: st.toast("✅ गूगल शीट से रूल्स और टेम्पलेट लोड हो गए!")
     except Exception as e:
@@ -258,15 +251,6 @@ def render_shipper_data():
                                 "fallback": ""
                             }
                         shipper_info["mapping_rules"] = imported_rules
-                        
-                        g_items = st.session_state.get("global_item_rules", {})
-                        if g_items:
-                            shipper_info["item_table_rules"] = dict(g_items)
-                            
-                        g_igst = st.session_state.get("global_igst_config", {})
-                        if g_igst:
-                            shipper_info["igst_config"] = dict(g_igst)
-                            
                         st.success("🎉 ग्लोबल मास्टर से फॉर्मेट सफलतापूर्वक इम्पोर्ट हो गया!")
                         st.rerun()
                     else:
@@ -307,9 +291,6 @@ def render_shipper_data():
             curr_pdf_text = st.session_state.get("cached_pdf_text", "")
 
             for field in list(current_rules.keys()):
-                if field.lower() in ["igst status", "igst mode"] or current_rules[field].get("cell", "").strip().upper() in ["V", "B19"]:
-                    continue
-
                 s_val = current_rules[field]
                 c1, c2, c3, c4, c5, c6, c7, c8, c9, c10 = st.columns([1.8, 2.2, 1.3, 0.7, 1.5, 1.3, 1.5, 1.5, 0.7, 1.0])
                 
@@ -320,9 +301,6 @@ def render_shipper_data():
                 mode_idx = mode_options.index(saved_mode) if saved_mode in mode_options else 0
                 
                 saved_flt = s_val.get("filter", "None")
-                if saved_flt in ["Inside Parentheses ()", "Text Inside ()"]:
-                    saved_flt = "Text Inside Parentheses ()"
-                
                 flt_idx = filter_options.index(saved_flt) if saved_flt in filter_options else 0
                 saved_logic = "Main Invoice"
 
@@ -408,9 +386,6 @@ def render_shipper_data():
             available_header_fields = list(current_rules.keys())
             
             for item_field in list(item_rules.keys()):
-                if item_field.lower() in ["igst status", "igst mode"] or item_rules[item_field].get("col", "").strip().upper() in ["V", "B19"]:
-                    continue
-
                 ir = item_rules[item_field]
                 ic1, ic2, ic3, ic4, ic5 = st.columns([3, 2, 3, 3, 1])
                 
@@ -458,7 +433,7 @@ def render_shipper_data():
                     if success:
                         fetch_cached_sheet_data.clear()
                         st.session_state["sheet_data_loaded"] = False
-                        st.success("🎉 सफलता! आपके सारे रूल्स और टेम्पलेट 'Shipper_JSON_Database' के कॉलम B और C में सुरक्षित सेव हो गए हैं!")
+                        st.success("🎉 सफलता! रूल्स 'Shipper_JSON_Database' में और टेम्पलेट 'Shipper_Files' में सुरक्षित सेव हो गए हैं!")
                         st.balloons()
                     else:
                         st.error("❌ सेव करते समय एरर आया!")
