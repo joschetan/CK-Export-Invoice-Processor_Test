@@ -199,22 +199,21 @@ def render_shipper_data():
                     shipper_info["uploaded_files"]["Full Job Excel Format File"] = b""
                     st.rerun()
             
-            f_upload = st.file_uploader("➡️ Blank Full Job Excel Format File (Template) अपलोड करें", type=["xlsx", "xls"], key=f"tpl_{selected_shipper}")
+            f_upload = st.file_uploader("➡️ नई Blank Full Job Excel Format File (Template) चुनें", type=["xlsx", "xls"], key=f"tpl_{selected_shipper}")
             
-            col_up_btn, _ = st.columns([3, 7])
-            with col_up_btn:
-                if st.button("🚀 Upload Template File Only", type="secondary", key=f"btn_upload_tpl_{selected_shipper}"):
-                    if f_upload:
-                        file_bytes = f_upload.getvalue()
+            if f_upload is not None:
+                file_bytes = f_upload.getvalue()
+                col_up_btn, _ = st.columns([3, 7])
+                with col_up_btn:
+                    if st.button("🚀 Upload Template File Only", type="primary", key=f"btn_upload_tpl_{selected_shipper}"):
                         shipper_info.setdefault("uploaded_files", {})["Full Job Excel Format File"] = file_bytes
                         with st.spinner("⏳ बड़ी टेम्पलेट फाइल टुकड़ों में गूगल शीट पर अपलोड हो रही है..."):
                             success = push_template_file_to_sheet(selected_shipper, file_bytes)
                             if success:
-                                st.success("🎉 टेम्पलेट फाइल सफलतापूर्वक चंक होकर सेव हो گئی!")
+                                st.success("🎉 टेम्पलेट फाइल सफलतापूर्वक चंक होकर सेव हो गई!")
+                                st.rerun()
                             else:
                                 st.error("❌ टेम्पलेट अपलोड करने में एरर आया!")
-                    else:
-                        st.warning("⚠️ पहले ऊपर से कोई एक्सेल फाइल चुनें!")
                     
             st.write("---")
             
