@@ -29,11 +29,11 @@ def fetch_cached_sheet_data():
     return fetch_all_from_sheet()
 
 def fetch_data_from_google_sheet(show_toast=False):
-    """गूगल शीट के 'Shipper_JSON_Database' से JSON डेटा और टेम्पलेट्स को सही तरीके से पार्स करके लोड करता है"""
+    """गूगल शीट के 'Shipper_JSON_Database' से JSON डेटा और टेम्पलेट्स फेच करता है"""
     ensure_default_shipper()
     try:
         data = fetch_cached_sheet_data()
-        if not data or not isinstance(data, dict):
+        if not data:
             if show_toast: st.error("⚠️ गूगल शीट से डेटा नहीं मिला.")
             return
 
@@ -67,7 +67,17 @@ def fetch_data_from_google_sheet(show_toast=False):
             if t_bytes:
                 shipper_info.setdefault("uploaded_files", {})["Full Job Excel Format File"] = t_bytes
 
-        if show_toast: st.toast("✅ गूगल शीट से सारे रूल्स और टेम्पलेट सफलतापूर्वक लोड हो गए!")
+        for s_key in st.session_state["shipper_database"].keys():
+            igst_fetched = fetch_igst_config_from_sheet(s_key)
+            if igst_fetched and isinstance(igst_fetched, dict):
+                current_igst = st.session_state["shipper_database"][s_key].get("igst_config", {})
+                if not current_igst.get("lut_keywords"):
+                    current_igst["lut_keywords"] = igst_fetched.get("lut_keywords", "")
+                if not current_igst.get("paid_keywords"):
+                    current_igst["paid_keywords"] = igst_fetched.get("paid_keywords", "")
+                st.session_state["shipper_database"][s_key]["igst_config"] = current_igst
+
+        if show_toast: st.toast("✅ गूगल शीट से रूल्स और टेम्पलेट लोड हो गए!")
     except Exception as e:
         if show_toast: st.error(f"फ़ैच एरर: {str(e)}")
 
@@ -232,7 +242,35 @@ def render_shipper_data():
                 if st.button("➕ Add Field", type="secondary", use_container_width=True):
                     add_custom_header_field_dialog(selected_shipper)
             with col_import:
-                pass
+                if st.button("📥 Import Master", type="primary", use_container_width=True, help="ग्लोबल मास्टर से डिफ़ॉल्ट रूल्स यहाँ इम्पोर्ट करें"):
+                    master_tpl = st.session_state.get("master_rules_template", {})
+                    if master_tpl:
+                        imported_rules = {}
+                        for m_key, m_val in master_tpl.items():
+                            imported_rules[m_key] = {
+                                "keyword": m_val.get("keyword", ""),
+                                "position": m_val.get("position", "Right (आगे)"),
+                                "cell": m_val.get("cell", ""),
+                                "match_mode": m_val.get("match_mode", "Exact Word"),
+                                "stop_kw": m_val.get("stop_kw", ""),
+                                "filter": m_val.get("filter", "None"),
+                                "logic": "Main Invoice",
+                                "fallback": ""
+                            }
+                        shipper_info["mapping_rules"] = imported_rules
+                        
+                        g_items = st.session_state.get("global_item_rules", {})
+                        if g_items:
+                            shipper_info["item_table_rules"] = dict(g_items)
+                            
+                        g_igst = st.session_state.get("global_igst_config", {})
+                        if g_igst:
+                            shipper_info["igst_config"] = dict(g_igst)
+                            
+                        st.success("🎉 ग्लोबल मास्टर से फॉर्मेट सफलतापूर्वक इम्पोर्ट हो गया!")
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ ग्लोबल मास्टर टेम्पलेट खाली है!")
             
             current_rules = shipper_info.get("mapping_rules", {})
             updated_rules = {}
@@ -269,6 +307,9 @@ def render_shipper_data():
             curr_pdf_text = st.session_state.get("cached_pdf_text", "")
 
             for field in list(current_rules.keys()):
+                if field.lower() in ["igst status", "igst mode"] or current_rules[field].get("cell", "").strip().upper() in ["V", "B19"]:
+                    continue
+
                 s_val = current_rules[field]
                 c1, c2, c3, c4, c5, c6, c7, c8, c9, c10 = st.columns([1.8, 2.2, 1.3, 0.7, 1.5, 1.3, 1.5, 1.5, 0.7, 1.0])
                 
@@ -279,6 +320,9 @@ def render_shipper_data():
                 mode_idx = mode_options.index(saved_mode) if saved_mode in mode_options else 0
                 
                 saved_flt = s_val.get("filter", "None")
+                if saved_flt in ["Inside Parentheses ()", "Text Inside ()"]:
+                    saved_flt = "Text Inside Parentheses ()"
+                
                 flt_idx = filter_options.index(saved_flt) if saved_flt in filter_options else 0
                 saved_logic = "Main Invoice"
 
@@ -364,6 +408,9 @@ def render_shipper_data():
             available_header_fields = list(current_rules.keys())
             
             for item_field in list(item_rules.keys()):
+                if item_field.lower() in ["igst status", "igst mode"] or item_rules[item_field].get("col", "").strip().upper() in ["V", "B19"]:
+                    continue
+
                 ir = item_rules[item_field]
                 ic1, ic2, ic3, ic4, ic5 = st.columns([3, 2, 3, 3, 1])
                 
