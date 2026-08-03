@@ -5,7 +5,7 @@ import base64
 from io import BytesIO
 import openpyxl
 
-WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwYVVWbqNZbzTOujVmip41KlID-rf9zEQLy_JM04ZEhUL-kixwRMD9nbPnOrZ46Fmz3/exec"[cite: 6]
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwYVVWbqNZbzTOujVmip41KlID-rf9zEQLy_JM04ZEhUL-kixwRMD9nbPnOrZ46Fmz3/exec"
 
 def get_val_case_insensitive(d, *keys, default=""):
     if not isinstance(d, dict):
@@ -51,18 +51,16 @@ def push_all_to_sheet(shippers_json_payload):
         return False
 
 def push_rules_to_sheet(shippers_json_payload):
-    """केवल रूल्स (JSON) को गूगल शीट पर सेव करता है"""
+    """केवल रूल्स (JSON) को गूगल शीट पर सेव करने के लिए"""
     return push_all_to_sheet(shippers_json_payload)
 
 def push_template_file_to_sheet(shipper_name, file_bytes):
-    """बड़ी टेम्पलेट फाइल (1+ MB) को टुकड़ों (Chunks) में बांटकर गूगल शीट पर भेजता है"""
+    """बड़ी टेम्पलेट फाइल (1+ MB) को टुकड़ों (Chunks) में बांटकर गूगल शीट पर भेजने के लिए"""
     try:
         b64_str = base64.b64encode(file_bytes).decode('utf-8')
         
-        # 1. Init Chunk
         requests.post(WEB_APP_URL, data=json.dumps({"action": "init_chunk", "shipper": shipper_name}), timeout=30)
         
-        # 2. Send in Chunks
         chunk_size = 30000
         for i in range(0, len(b64_str), chunk_size):
             chunk = b64_str[i:i + chunk_size]
@@ -72,7 +70,6 @@ def push_template_file_to_sheet(shipper_name, file_bytes):
                 "chunk": chunk
             }), timeout=30)
             
-        # 3. Finalize and Save
         res = requests.post(WEB_APP_URL, data=json.dumps({
             "action": "save_template_file",
             "shipper": shipper_name
