@@ -5,7 +5,7 @@ import base64
 from io import BytesIO
 import openpyxl
 
-WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwYVVWbqNZbzTOujVmip41KlID-rf9zEQLy_JM04ZEhUL-kixwRMD9nbPnOrZ46Fmz3/exec"[cite: 11]
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwYVVWbqNZbzTOujVmip41KlID-rf9zEQLy_JM04ZEhUL-kixwRMD9nbPnOrZ46Fmz3/exec"
 
 def get_val_case_insensitive(d, *keys, default=""):
     if not isinstance(d, dict):
