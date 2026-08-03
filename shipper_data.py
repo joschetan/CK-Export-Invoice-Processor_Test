@@ -444,6 +444,9 @@ def render_shipper_data():
                 for s_name, s_data in st.session_state["shipper_database"].items():
                     tpl_bytes = s_data.get("uploaded_files", {}).get("Full Job Excel Format File", b"")
                     b64_str = base64.b64encode(tpl_bytes).decode('utf-8') if isinstance(tpl_bytes, bytes) and len(tpl_bytes) > 0 else ""
+                    
+                    # 🔍 यहाँ हमने डिबग प्रिंट जोड़ दिया है ताकि पता चले बाइट्स पकड़ में आ रहे हैं या नहीं
+                    st.write(f"DEBUG TEMPLATE BYTES LENGTH: {len(tpl_bytes)} | B64 LEN: {len(b64_str)}")
                         
                     shippers_payload[s_name] = {
                         "mapping_rules": s_data.get("mapping_rules", {}),
