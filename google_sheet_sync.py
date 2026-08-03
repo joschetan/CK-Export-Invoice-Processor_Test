@@ -4,9 +4,8 @@ import json
 import base64
 from io import BytesIO
 import openpyxl
-import gzip
 
-WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwYVVWbqNZbzTOujVmip41KlID-rf9zEQLy_JM04ZEhUL-kixwRMD9nbPnOrZ46Fmz3/exec"
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwYVVWbqNZbzTOujVmip41KlID-rf9zEQLy_JM04ZEhUL-kixwRMD9nbPnOrZ46Fmz3/exec"[cite: 11]
 
 def get_val_case_insensitive(d, *keys, default=""):
     if not isinstance(d, dict):
@@ -21,7 +20,7 @@ def get_val_case_insensitive(d, *keys, default=""):
 
 @st.cache_data(show_spinner=False)
 def fetch_all_from_sheet():
-    """गूगल शीट से सारे रूल्स और टेम्पलेट फेच करता है (कम्प्रैस्ड या नॉर्मल दोनों सपोर्ट के साथ)"""
+    """गूगल शीट के 'Shipper_JSON_Database' से JSON डेटा और टेम्पलेट्स फेच करता है"""
     try:
         response = requests.get(f"{WEB_APP_URL}?action=get_data", timeout=20)
         if response.status_code == 200:
@@ -37,21 +36,34 @@ def clear_sheet_cache():
     fetch_all_from_sheet.clear()
 
 def push_all_to_sheet(shippers_json_payload):
-    """बड़ी फाइलों और रूल्स को Gzip से कम्प्रैस करके गूगल शीट पर पोस्ट करता है"""
+    """बड़ी फाइलों को 50 KB के टुकड़ों (Chunks) में बांटकर गूगल शीट पर भेजता है और अंत में JSON सेव करता है"""
     try:
-        json_data_str = json.dumps({
+        # 1. पहले बड़ी फाइल Base64 को चंक्स में भेजें
+        for shipper_name, shipper_obj in shippers_json_payload.items():
+            b64_str = shipper_obj.get("file_base64", "")
+            if b64_str and len(b64_str) > 50000:  # अगर फाइल 50KB से बड़ी है तो चंकिंग करें
+                init_payload = {"action": "init_chunk", "shipper": shipper_name}
+                requests.post(WEB_APP_URL, data=json.dumps(init_payload), timeout=30)
+                
+                chunk_size = 50000
+                for i in range(0, len(b64_str), chunk_size):
+                    chunk_piece = b64_str[i:i + chunk_size]
+                    chunk_payload = {
+                        "action": "append_chunk",
+                        "shipper": shipper_name,
+                        "chunk": chunk_piece
+                    }
+                    requests.post(WEB_APP_URL, data=json.dumps(chunk_payload), timeout=30)
+                
+                # पाइथन साइड से temporary base_64 खाली कर दें क्योंकि वह चंक के जरिए सर्वर पर जुड़ चुका है
+                shipper_obj["file_base64"] = ""
+
+        # 2. अंत में सारे JSON रूल्स और सेव करने की फाइनल कमांड भेजें
+        payload = {
             "action": "save_shipper_json",
             "shippers_data": shippers_json_payload
-        })
-        compressed_bytes = gzip.compress(json_data_str.encode('utf-8'))
-        b64_payload = base64.b64encode(compressed_bytes).decode('utf-8')
-        
-        payload = {
-            "action": "save_compressed",
-            "payload": b64_payload
         }
-        
-        response = requests.post(WEB_APP_URL, data=json.dumps(payload), timeout=60)
+        response = requests.post(WEB_APP_URL, data=json.dumps(payload), timeout=120)
         if response.status_code == 200:
             clear_sheet_cache()
             return True
@@ -84,7 +96,6 @@ def load_template_bytes_from_sheet(shipper_name):
     return None
 
 def load_template_from_sheet(shipper_name):
-    """पुराना फंक्शन जो वैसे का वैसा रखा गया है"""
     raw_bytes = load_template_bytes_from_sheet(shipper_name)
     if raw_bytes:
         try:
