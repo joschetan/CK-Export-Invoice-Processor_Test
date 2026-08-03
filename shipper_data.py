@@ -29,6 +29,7 @@ def fetch_cached_sheet_data():
     return fetch_all_from_sheet()
 
 def fetch_data_from_google_sheet(show_toast=False):
+    """गूगल शीट के नए 'Shipper_JSON_Database' (कॉलम B और C) से डेटा और रूल्स फेच करता है"""
     ensure_default_shipper()
     try:
         data = fetch_cached_sheet_data()
@@ -58,12 +59,12 @@ def fetch_data_from_google_sheet(show_toast=False):
             shipper_info["item_table_rule_name"] = s_data.get("item_table_rule_name", "Rule_Welspun")
             shipper_info["igst_config"] = s_data.get("igst_config", {"lut_keywords": "", "paid_keywords": ""})
 
-            # टेम्पलेट बाइट्स लोड करना
+            # कॉलम C से टेम्पलेट बाइट्स लोड करना
             t_bytes = load_template_bytes_from_sheet(s_name)
             if t_bytes:
                 shipper_info.setdefault("uploaded_files", {})["Full Job Excel Format File"] = t_bytes
 
-        if show_toast: st.toast("✅ गूगल शीट से सारे रूल्स सफलतापर्पूर्वक लोड हो गए!")
+        if show_toast: st.toast("✅ गूगल शीट के नए डेटाबेस से रूल्स लोड हो गए!")
     except Exception as e:
         if show_toast: st.error(f"फ़ैच एरर: {str(e)}")
 
@@ -183,11 +184,11 @@ def render_shipper_data():
             st.write("---")
             st.subheader("📁 1. टेम्पलेट फ़ाइल अपलोड")
             
-            has_file = "Full Job Excel Format File" in shipper_info.get("uploaded_files", {})
+            has_file = "Full Job Excel Format File" in shipper_info.get("uploaded_files", {}) and len(shipper_info["uploaded_files"]["Full Job Excel Format File"]) > 0
             if has_file:
                 st.success("✅ Blank Full Job Excel Format File अपलोडेड एवं सुरक्षित है.")
                 if st.button("🗑️ Delete & Replace Template", key=f"del_tpl_{selected_shipper}"):
-                    del shipper_info["uploaded_files"]["Full Job Excel Format File"]
+                    shipper_info["uploaded_files"]["Full Job Excel Format File"] = b""
                     st.rerun()
             else:
                 f_upload = st.file_uploader("➡️ Blank Full Job Excel Format File (Template) अपलोड करें", type=["xlsx", "xls"], key=f"tpl_{selected_shipper}")
@@ -321,7 +322,7 @@ def render_shipper_data():
                 shippers_payload = {}
                 for s_name, s_data in st.session_state["shipper_database"].items():
                     tpl_bytes = s_data.get("uploaded_files", {}).get("Full Job Excel Format File", b"")
-                    b64_str = base64.b64encode(tpl_bytes).decode('utf-8') if isinstance(tpl_bytes, bytes) and len(tpl_bytes) > 0 else ''
+                    b64_str = base64.b64encode(tpl_bytes).decode('utf-8') if isinstance(tpl_bytes, bytes) and len(tpl_bytes) > 0 else ""
                         
                     shippers_payload[s_name] = {
                         "mapping_rules": s_data.get("mapping_rules", {}),
