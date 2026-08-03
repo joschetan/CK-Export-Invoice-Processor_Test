@@ -29,12 +29,15 @@ def fetch_cached_sheet_data():
     return fetch_all_from_sheet()
 
 def fetch_data_from_google_sheet(show_toast=False):
-    """गूगल शीट के 'Shipper_JSON_Database' (कॉलम B और C) से डेटा और रूल्स फेच करता है"""
+    """गूगल शीट से डेटा फेच करता है और डिबग जानकारी दिखाता है"""
     ensure_default_shipper()
     try:
         fetch_cached_sheet_data.clear()
         data = fetch_all_from_sheet()
         
+        # 🔍 यह देखने के लिए कि शीट से क्या आ रहा है
+        st.warning(f"🔍 DEBUG RAW DATA FROM SHEET: {data}")
+
         if not data:
             if show_toast: st.error("⚠️ गूगल शीट से डेटा नहीं मिला.")
             return
@@ -65,14 +68,13 @@ def fetch_data_from_google_sheet(show_toast=False):
                 shipper_info["item_table_rule_name"] = s_data.get("item_table_rule_name", "Rule_Welspun")
                 shipper_info["igst_config"] = s_data.get("igst_config", {"lut_keywords": "", "paid_keywords": ""})
 
-            # कॉलम C से टेम्पलेट बाइट्स लोड करना
             t_bytes = load_template_bytes_from_sheet(s_name)
             if t_bytes:
                 shipper_info.setdefault("uploaded_files", {})["Full Job Excel Format File"] = t_bytes
 
-        if show_toast: st.toast("✅ गूगल शीट के नए डेटाबेस से रूल्स लोड हो गए!")
+        if show_toast: st.toast("✅ गूगल शीट से रूल्स लोड हो गए!")
     except Exception as e:
-        if show_toast: st.error(f"फ़ैच एरर: {str(e)}")
+        st.error(f"फ़ैच एरर: {str(e)}")
 
 @st.dialog("🧪 Live Extraction Field Test Result")
 def show_field_test_dialog(field_name, rule_data, result_val):
