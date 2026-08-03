@@ -36,80 +36,34 @@ def fetch_data_from_google_sheet(show_toast=False):
             if show_toast: st.error("⚠️ गूगल शीट से डेटा नहीं मिला.")
             return
 
-        # 🔍 पुरानी 'Shipper_Rules' शीट के फ्लैट डेटा को पढ़कर स्क्रीन पर सारे रूल्स वापस लाना
-        rules_list = data.get("rules", [])
+        shippers_dict = data.get("shippers", {})
         
-        if isinstance(rules_list, list) and len(rules_list) > 1:
-            for row in rules_list[1:]:
-                if not row or len(row) < 11:
-                    continue
+        for s_name, s_data in shippers_dict.items():
+            if not s_name:
+                continue
                 
-                s_name = str(row[0]).strip() if row[0] is not None else ""
-                f_name = str(row[1]).strip() if row[1] is not None else ""
-                kw_val = str(row[2]).strip() if row[2] is not None else ""
-                pos_val = str(row[3]).strip() if row[3] is not None else "Right (आगे)"
-                cell_val = str(row[4]).strip().upper() if row[4] is not None else ""
-                match_val = str(row[5]).strip() if row[5] is not None else "Exact Word"
-                stop_val = str(row[6]).strip() if row[6] is not None else ""
-                flt_val = str(row[7]).strip() if row[7] is not None else "None"
-                logic_val = str(row[8]).strip() if row[8] is not None else "Main Invoice"
-                fb_val = str(row[9]).strip() if row[9] is not None else ""
-                rule_kind = str(row[10]).strip().lower() if row[10] is not None else "header"
-                
-                if f_name.lower() in ["igst status", "igst mode"] or cell_val in ["V", "B19"]:
-                    continue
+            if s_name not in st.session_state["shipper_database"]:
+                st.session_state["shipper_database"][s_name] = {
+                    "allowed_uploads": ["Full Job Excel Format File"],
+                    "uploaded_files": {},
+                    "mapping_rules": {},
+                    "item_table_rules": {},
+                    "item_table_rule_name": "Rule_Welspun",
+                    "igst_config": {"lut_keywords": "", "paid_keywords": ""}
+                }
+            
+            shipper_info = st.session_state["shipper_database"][s_name]
+            shipper_info["mapping_rules"] = s_data.get("mapping_rules", {})
+            shipper_info["item_table_rules"] = s_data.get("item_table_rules", {})
+            shipper_info["item_table_rule_name"] = s_data.get("item_table_rule_name", "Rule_Welspun")
+            shipper_info["igst_config"] = s_data.get("igst_config", {"lut_keywords": "", "paid_keywords": ""})
 
-                if s_name and f_name:
-                    target_key = s_name
-                        
-                    if target_key not in st.session_state["shipper_database"]:
-                        st.session_state["shipper_database"][target_key] = {
-                            "allowed_uploads": ["Full Job Excel Format File"],
-                            "uploaded_files": {},
-                            "mapping_rules": {},
-                            "item_table_rules": {},
-                            "item_table_rule_name": "Rule_Welspun",
-                            "igst_config": {"lut_keywords": "", "paid_keywords": ""}
-                        }
-                    
-                    shipper_target = st.session_state["shipper_database"][target_key]
-
-                    if "igst_config" in rule_kind or f_name.lower() in ["lut_keywords", "paid_keywords"]:
-                        if f_name.lower() == "lut_keywords":
-                            shipper_target.setdefault("igst_config", {})["lut_keywords"] = kw_val
-                        elif f_name.lower() == "paid_keywords":
-                            shipper_target.setdefault("igst_config", {})["paid_keywords"] = kw_val
-                    elif "item" in rule_kind:
-                        if f_name == "PARSER_RULE_NAME":
-                            shipper_target["item_table_rule_name"] = kw_val
-                        else:
-                            shipper_target.setdefault("item_table_rules", {})[f_name] = {
-                                "col": cell_val,
-                                "type": match_val,
-                                "rule": kw_val
-                            }
-                    else:
-                        if not flt_val or flt_val == "":
-                            flt_val = "None"
-                            
-                        shipper_target.setdefault("mapping_rules", {})[f_name] = {
-                            "keyword": kw_val,
-                            "position": pos_val,
-                            "cell": cell_val,
-                            "match_mode": match_val,
-                            "stop_kw": stop_val,
-                            "filter": flt_val,
-                            "logic": logic_val,
-                            "fallback": fb_val
-                        }
-
-        # टेम्पलेट फाइल लोड करना
-        for s_key in st.session_state["shipper_database"].keys():
-            t_bytes = load_template_bytes_from_sheet(s_key)
+            # कॉलम C से टेम्पलेट बाइट्स लोड करना
+            t_bytes = load_template_bytes_from_sheet(s_name)
             if t_bytes:
-                st.session_state["shipper_database"][s_key].setdefault("uploaded_files", {})["Full Job Excel Format File"] = t_bytes
+                shipper_info.setdefault("uploaded_files", {})["Full Job Excel Format File"] = t_bytes
 
-        if show_toast: st.toast("✅ गूगल शीट से सारे रूल्स सफलतापूर्वक लोड हो गए!")
+        if show_toast: st.toast("✅ गूगल शीट से कॉलम B और C का डेटा सफलतापूर्वक लोड हो गया!")
     except Exception as e:
         if show_toast: st.error(f"फ़ैच एरर: {str(e)}")
 
@@ -364,6 +318,27 @@ def render_shipper_data():
             st.write("---")
 
             if st.button("💾 Save All AI Mapping Rules to Google Sheet", type="primary", use_container_width=True, key="btn_save_all_sheet"):
-                st.success("डेटा सुरक्षित है!")
+                shippers_payload = {}
+                for s_name, s_data in st.session_state["shipper_database"].items():
+                    tpl_bytes = s_data.get("uploaded_files", {}).get("Full Job Excel Format File", b"")
+                    b64_str = base64.b64encode(tpl_bytes).decode('utf-8') if isinstance(tpl_bytes, bytes) and len(tpl_bytes) > 0 else ""
+                        
+                    shippers_payload[s_name] = {
+                        "mapping_rules": s_data.get("mapping_rules", {}),
+                        "item_table_rules": s_data.get("item_table_rules", {}),
+                        "item_table_rule_name": s_data.get("item_table_rule_name", "Rule_Welspun"),
+                        "igst_config": s_data.get("igst_config", {}),
+                        "file_base64": b64_str
+                    }
+                
+                with st.spinner("⏳ गूगल शीट में रूल्स (कॉलम B) और टेम्पलेट (कॉलम C) सुरक्षित सेव हो रहे हैं..."):
+                    success = push_all_to_sheet(shippers_payload)
+                    if success:
+                        fetch_cached_sheet_data.clear()
+                        st.session_state["sheet_data_loaded"] = False
+                        st.success("🎉 सफलता! रूल्स कॉलम B में और टेम्पलेट फाइल कॉलम C में परमानेंट सेव हो गए हैं!")
+                        st.balloons()
+                    else:
+                        st.error("❌ सेव करते समय एरर आया!")
 
             render_universal_test_suite(selected_shipper)
