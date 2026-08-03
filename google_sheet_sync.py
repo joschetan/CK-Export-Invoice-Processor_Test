@@ -5,7 +5,7 @@ import base64
 from io import BytesIO
 import openpyxl
 
-WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwYVVWbqNZbzTOujVmip41KlID-rf9zEQLy_JM04ZEhUL-kixwRMD9nbPnOrZ46Fmz3/exec"
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzjvuANwLlzOlJYrvYSRf5rGh6FHorAWLH9LBf2v7JylR4oEn4HBcEllflgpG2cHwhJ/exec"
 
 def get_val_case_insensitive(d, *keys, default=""):
     if not isinstance(d, dict):
@@ -20,7 +20,7 @@ def get_val_case_insensitive(d, *keys, default=""):
 
 @st.cache_data(show_spinner=False)
 def fetch_all_from_sheet():
-    """गूगल शीट से JSON डेटा और टेम्पलेट्स सुरक्षित रूप से फेच करता है"""
+    """गूगल शीट से शिपर-वाइज कॉम्पैक्ट JSON डेटा और टेम्पलेट्स फेच करता है (कैश्ड)"""
     try:
         response = requests.get(f"{WEB_APP_URL}?action=get_data", timeout=15)
         if response.status_code == 200:
@@ -33,10 +33,11 @@ def fetch_all_from_sheet():
     return None
 
 def clear_sheet_cache():
+    """एडमिन द्वारा सेव करने पर कैच को तुरंत साफ़ करने के लिए"""
     fetch_all_from_sheet.clear()
 
 def push_all_to_sheet(shippers_json_payload):
-    """सारे शिपर का JSON डेटा गूगल शीट पर भेजता है"""
+    """सारे शिपर का JSON डेटा और Base64 टेम्पलेट्स गूगल शीट पर कॉलम B और C में सेव करता है"""
     try:
         payload = {
             "action": "save_shipper_json",
@@ -51,7 +52,7 @@ def push_all_to_sheet(shippers_json_payload):
         return False
 
 def load_template_bytes_from_sheet(shipper_name):
-    """गूगल शीट के JSON डेटा से शिपर की Base64 फाइल को डिकोड करता है"""
+    """गूगल शीट के डेटा से शिपर की Base64 फाइल को डिकोड करके बाइट्स लौटाता है"""
     data = fetch_all_from_sheet()
     if not data:
         return None
@@ -75,6 +76,7 @@ def load_template_bytes_from_sheet(shipper_name):
     return None
 
 def load_template_from_sheet(shipper_name):
+    """गूगल शीट से शिपर की फाइल को openpyxl Workbook में बदलता है"""
     raw_bytes = load_template_bytes_from_sheet(shipper_name)
     if raw_bytes:
         try:
