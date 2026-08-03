@@ -55,25 +55,16 @@ def push_rules_to_sheet(shippers_json_payload):
     return push_all_to_sheet(shippers_json_payload)
 
 def push_template_file_to_sheet(shipper_name, file_bytes):
-    """बड़ी टेम्पलेट फाइल (1+ MB) को टुकड़ों (Chunks) में बांटकर गूगल शीट पर भेजने के लिए"""
+    """टेम्पलेट फाइल को बेस64 में बदलकर गूगल शीट पर भेजता है (जो Apps Script द्वारा टुकड़ों में बंट जाती है)"""
     try:
-        b64_str = base64.b64encode(file_bytes).decode('utf-8')
+        b64_str = base64.b64encode(file_bytes).decode('utf-8') if file_bytes else ""
         
-        requests.post(WEB_APP_URL, data=json.dumps({"action": "init_chunk", "shipper": shipper_name}), timeout=30)
-        
-        chunk_size = 30000
-        for i in range(0, len(b64_str), chunk_size):
-            chunk = b64_str[i:i + chunk_size]
-            requests.post(WEB_APP_URL, data=json.dumps({
-                "action": "append_chunk",
-                "shipper": shipper_name,
-                "chunk": chunk
-            }), timeout=30)
-            
-        res = requests.post(WEB_APP_URL, data=json.dumps({
+        payload = {
             "action": "save_template_file",
-            "shipper": shipper_name
-        }), timeout=60)
+            "shipper": shipper_name,
+            "file_base64": b64_str
+        }
+        res = requests.post(WEB_APP_URL, data=json.dumps(payload), timeout=120)
         
         if res.status_code == 200:
             clear_sheet_cache()
