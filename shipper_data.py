@@ -63,7 +63,7 @@ def fetch_data_from_google_sheet(show_toast=False):
             if t_bytes:
                 shipper_info.setdefault("uploaded_files", {})["Full Job Excel Format File"] = t_bytes
 
-        if show_toast: st.toast("✅ गूगल शीट से कॉलम B और C का डेटा सफलतापूर्वक लोड हो गया!")
+        if show_toast: st.toast("✅ गूगल शीट के नए डेटाबेस से रूल्स लोड हो गए!")
     except Exception as e:
         if show_toast: st.error(f"फ़ैच एरर: {str(e)}")
 
@@ -183,19 +183,17 @@ def render_shipper_data():
             st.write("---")
             st.subheader("📁 1. टेम्पलेट फ़ाइल अपलोड")
             
-            shipper_info.setdefault("uploaded_files", {})
-            has_file = "Full Job Excel Format File" in shipper_info["uploaded_files"] and len(shipper_info["uploaded_files"]["Full Job Excel Format File"]) > 0
-            
+            has_file = "Full Job Excel Format File" in shipper_info.get("uploaded_files", {})
             if has_file:
                 st.success("✅ Blank Full Job Excel Format File अपलोडेड एवं सुरक्षित है.")
                 if st.button("🗑️ Delete & Replace Template", key=f"del_tpl_{selected_shipper}"):
-                    shipper_info["uploaded_files"]["Full Job Excel Format File"] = b""
+                    del shipper_info["uploaded_files"]["Full Job Excel Format File"]
                     st.rerun()
             else:
                 f_upload = st.file_uploader("➡️ Blank Full Job Excel Format File (Template) अपलोड करें", type=["xlsx", "xls"], key=f"tpl_{selected_shipper}")
                 if f_upload:
-                    shipper_info["uploaded_files"]["Full Job Excel Format File"] = f_upload.getvalue()
-                    st.success("टेम्पलेट सफलतापर्पूर्वक लोड हो गया है! अब नीचे 'Save All AI Mapping Rules' बटन दबाएं।")
+                    shipper_info.setdefault("uploaded_files", {})["Full Job Excel Format File"] = f_upload.getvalue()
+                    st.success("टेम्पलेट सेव हो गया!")
                     st.rerun()
                     
             st.write("---")
@@ -323,10 +321,7 @@ def render_shipper_data():
                 shippers_payload = {}
                 for s_name, s_data in st.session_state["shipper_database"].items():
                     tpl_bytes = s_data.get("uploaded_files", {}).get("Full Job Excel Format File", b"")
-                    
-                    b64_str = ""
-                    if isinstance(tpl_bytes, bytes) and len(tpl_bytes) > 0:
-                        b64_str = base64.b64encode(tpl_bytes).decode('utf-8')
+                    b64_str = base64.b64encode(tpl_bytes).decode('utf-8') if isinstance(tpl_bytes, bytes) and len(tpl_bytes) > 0 else ""
                         
                     shippers_payload[s_name] = {
                         "mapping_rules": s_data.get("mapping_rules", {}),
@@ -341,7 +336,7 @@ def render_shipper_data():
                     if success:
                         fetch_cached_sheet_data.clear()
                         st.session_state["sheet_data_loaded"] = False
-                        st.success("🎉 सफलता! रूल्स कॉलम B में और टेम्पलेट फाइल कॉलम C में परमानेंट सेव हो गई है!")
+                        st.success("🎉 सफलता! रूल्स कॉलम B में और टेम्पलेट फाइल कॉलम C में परमानेंट सेव हो गए हैं!")
                         st.balloons()
                     else:
                         st.error("❌ सेव करते समय एरर आया!")
