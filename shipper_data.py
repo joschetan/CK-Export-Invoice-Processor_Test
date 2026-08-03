@@ -190,27 +190,22 @@ def render_shipper_data():
             st.write(f"### ⚙️ प्रोफाइल सेटअप और रूल्स: **{selected_shipper}**")
             shipper_info = st.session_state["shipper_database"][selected_shipper]
             
-           st.subheader("📁 1. टेम्पलेट फ़ाइल अपलोड (अलग बटन)")
+            st.subheader("📁 1. टेम्पलेट फ़ाइल अपलोड (अलग बटन)")
             
             has_file = "Full Job Excel Format File" in shipper_info.get("uploaded_files", {}) and len(shipper_info["uploaded_files"]["Full Job Excel Format File"]) > 0
             if has_file:
                 st.success("✅ Blank Full Job Excel Format File अपलोडेड एवं सुरक्षित है.")
                 if st.button("🗑️ Delete Template", key=f"del_tpl_{selected_shipper}"):
                     shipper_info["uploaded_files"]["Full Job Excel Format File"] = b""
-                    # शीट से भी हटाने के लिए खाली बाइट्स भेज दें
                     push_template_file_to_sheet(selected_shipper, b"")
                     st.rerun()
             
             f_upload = st.file_uploader("➡️ नई Blank Full Job Excel Format File (Template) चुनें", type=["xlsx", "xls"], key=f"tpl_{selected_shipper}")
             
-            if f_upload is not None:
-                file_bytes = f_upload.getvalue()
-                shipper_info.setdefault("uploaded_files", {})["Full Job Excel Format File"] = file_bytes
-                
-            # यह बटन हमेशा दिखेगा जब भी फाइल चुनी होगी या पहले से होगी
             if has_file or f_upload is not None:
                 if st.button("🚀 Upload Template to Google Sheet Only", type="primary", use_container_width=True, key=f"btn_upload_tpl_{selected_shipper}"):
                     target_bytes = f_upload.getvalue() if f_upload is not None else shipper_info["uploaded_files"]["Full Job Excel Format File"]
+                    shipper_info.setdefault("uploaded_files", {})["Full Job Excel Format File"] = target_bytes
                     with st.spinner("⏳ बड़ी टेम्पलेट फाइल टुकड़ों में गूगल शीट पर अपलोड हो रही है..."):
                         success = push_template_file_to_sheet(selected_shipper, target_bytes)
                         if success:
