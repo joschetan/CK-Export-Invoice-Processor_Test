@@ -5,7 +5,7 @@ import base64
 from io import BytesIO
 import openpyxl
 
-WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwYVVWbqNZbzTOujVmip41KlID-rf9zEQLy_JM04ZEhUL-kixwRMD9nbPnOrZ46Fmz3/exec"[cite: 7]
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwYVVWbqNZbzTOujVmip41KlID-rf9zEQLy_JM04ZEhUL-kixwRMD9nbPnOrZ46Fmz3/exec"[cite: 6]
 
 def get_val_case_insensitive(d, *keys, default=""):
     if not isinstance(d, dict):
@@ -20,7 +20,7 @@ def get_val_case_insensitive(d, *keys, default=""):
 
 @st.cache_data(show_spinner=False)
 def fetch_all_from_sheet():
-    """गूगल शीट से JSON डेटा और चंक्स वाले टेम्पलेट्स फेच करता है"""
+    """गूगल शीट के 'Shipper_JSON_Database' से JSON डेटा और टेम्पलेट्स फेच करता है"""
     try:
         response = requests.get(f"{WEB_APP_URL}?action=get_data", timeout=20)
         if response.status_code == 200:
@@ -36,7 +36,7 @@ def clear_sheet_cache():
     fetch_all_from_sheet.clear()
 
 def push_all_to_sheet(shippers_json_payload):
-    """सारे शिपर का JSON डेटा और Base64 टेम्पलेट्स गूगल शीट पर सुरक्षित सेव करता है"""
+    """पुराने कोड और रूल्स सेव करने के लिए कम्पाटिबल फंक्शन"""
     try:
         payload = {
             "action": "save_shipper_json",
@@ -50,8 +50,43 @@ def push_all_to_sheet(shippers_json_payload):
     except Exception:
         return False
 
+def push_rules_to_sheet(shippers_json_payload):
+    """केवल रूल्स (JSON) को गूगल शीट पर सेव करता है"""
+    return push_all_to_sheet(shippers_json_payload)
+
+def push_template_file_to_sheet(shipper_name, file_bytes):
+    """बड़ी टेम्पलेट फाइल (1+ MB) को टुकड़ों (Chunks) में बांटकर गूगल शीट पर भेजता है"""
+    try:
+        b64_str = base64.b64encode(file_bytes).decode('utf-8')
+        
+        # 1. Init Chunk
+        requests.post(WEB_APP_URL, data=json.dumps({"action": "init_chunk", "shipper": shipper_name}), timeout=30)
+        
+        # 2. Send in Chunks
+        chunk_size = 30000
+        for i in range(0, len(b64_str), chunk_size):
+            chunk = b64_str[i:i + chunk_size]
+            requests.post(WEB_APP_URL, data=json.dumps({
+                "action": "append_chunk",
+                "shipper": shipper_name,
+                "chunk": chunk
+            }), timeout=30)
+            
+        # 3. Finalize and Save
+        res = requests.post(WEB_APP_URL, data=json.dumps({
+            "action": "save_template_file",
+            "shipper": shipper_name
+        }), timeout=60)
+        
+        if res.status_code == 200:
+            clear_sheet_cache()
+            return True
+        return False
+    except Exception:
+        return False
+
 def load_template_bytes_from_sheet(shipper_name):
-    """गूगल शीट से शिपर की टुकड़ों में बंटी Base64 फाइल को जोड़कर डिकोड करता है और बाइट्स लौटाता है"""
+    """गूगल शीट से शिपर की Base64 फाइल को डिकोड करके बाइट्स लौटाता है"""
     data = fetch_all_from_sheet()
     if not data:
         return None
