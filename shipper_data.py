@@ -7,8 +7,10 @@ from io import BytesIO
 
 from pdf_engine import extract_header_value, detect_igst_status
 from test_suite import render_universal_test_suite
-from google_sheet_sync import fetch_all_from_sheet, push_all_to_sheet, get_val_case_insensitive, load_template_bytes_from_sheet
+from google_sheet_sync import fetch_all_from_sheet, push_rules_to_sheet, push_template_file_to_sheet, get_val_case_insensitive, load_template_bytes_from_sheet
 from igst_config_sync import fetch_igst_config_from_sheet
+
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwYVVWbqNZbzTOujVmip41KlID-rf9zEQLy_JM04ZEhUL-kixwRMD9nbPnOrZ46Fmz3/exec"[cite: 4]
 
 def ensure_default_shipper():
     if "shipper_database" not in st.session_state:
@@ -190,20 +192,31 @@ def render_shipper_data():
             st.write(f"### ⚙️ प्रोफाइल सेटअप और रूल्स: **{selected_shipper}**")
             shipper_info = st.session_state["shipper_database"][selected_shipper]
             
-            st.subheader("📁 1. टेम्पलेट फ़ाइल अपलोड")
+            st.subheader("📁 1. टेम्पलेट फ़ाइल अपलोड (अलग बटन)")
             
             has_file = "Full Job Excel Format File" in shipper_info.get("uploaded_files", {}) and len(shipper_info["uploaded_files"]["Full Job Excel Format File"]) > 0
             if has_file:
                 st.success("✅ Blank Full Job Excel Format File अपलोडेड एवं सुरक्षित है.")
-                if st.button("🗑️ Delete & Replace Template", key=f"del_tpl_{selected_shipper}"):
+                if st.button("🗑️ Delete Template", key=f"del_tpl_{selected_shipper}"):
                     shipper_info["uploaded_files"]["Full Job Excel Format File"] = b""
                     st.rerun()
-            else:
-                f_upload = st.file_uploader("➡️ Blank Full Job Excel Format File (Template) अपलोड करें", type=["xlsx", "xls"], key=f"tpl_{selected_shipper}")
-                if f_upload:
-                    shipper_info.setdefault("uploaded_files", {})["Full Job Excel Format File"] = f_upload.getvalue()
-                    st.success("टेम्पलेट सेव हो गया! अब नीचे 'Save All Rules' दबाकर गूगल शीट में लॉक करें.")
-                    st.rerun()
+            
+            f_upload = st.file_uploader("➡️ Blank Full Job Excel Format File (Template) अपलोड करें", type=["xlsx", "xls"], key=f"tpl_{selected_shipper}")
+            
+            col_up_btn, _ = st.columns([3, 7])
+            with col_up_btn:
+                if st.button("🚀 Upload Template File Only", type="secondary", key=f"btn_upload_tpl_{selected_shipper}"):
+                    if f_upload:
+                        file_bytes = f_upload.getvalue()
+                        shipper_info.setdefault("uploaded_files", {})["Full Job Excel Format File"] = file_bytes
+                        with st.spinner("⏳ बड़ी टेम्पलेट फाइल टुकड़ों में गूगल शीट पर अपलोड हो रही है..."):
+                            success = push_template_file_to_sheet(selected_shipper, file_bytes)
+                            if success:
+                                st.success("🎉 टेम्पलेट फाइल सफलतापूर्वक चंक होकर सेव हो گئی!")
+                            else:
+                                st.error("❌ टेम्पलेट अपलोड करने में एरर आया!")
+                    else:
+                        st.warning("⚠️ पहले ऊपर से कोई एक्सेल फाइल चुनें!")
                     
             st.write("---")
             
@@ -439,28 +452,25 @@ def render_shipper_data():
             shipper_info["item_table_rules"] = updated_item_rules
             st.write("---")
             
-            if st.button("💾 Save All AI Mapping Rules to Google Sheet", type="primary", use_container_width=True, key="btn_save_all_sheet"):
+            # 💾 केवल रूल्स सेव करने के लिए अलग बटन
+            if st.button("💾 Save Rules Only to Google Sheet", type="primary", use_container_width=True, key="btn_save_rules_sheet"):
                 shippers_payload = {}
                 for s_name, s_data in st.session_state["shipper_database"].items():
-                    tpl_bytes = s_data.get("uploaded_files", {}).get("Full Job Excel Format File", b"")
-                    b64_str = base64.b64encode(tpl_bytes).decode('utf-8') if isinstance(tpl_bytes, bytes) and len(tpl_bytes) > 0 else ""
-                        
                     shippers_payload[s_name] = {
                         "mapping_rules": s_data.get("mapping_rules", {}),
                         "item_table_rules": s_data.get("item_table_rules", {}),
                         "item_table_rule_name": s_data.get("item_table_rule_name", "Rule_Welspun"),
-                        "igst_config": s_data.get("igst_config", {}),
-                        "file_base64": b64_str
+                        "igst_config": s_data.get("igst_config", {})
                     }
                 
-                with st.spinner("⏳ गूगल शीट में रूल्स और टेम्पलेट सेव हो रहे हैं..."):
-                    success = push_all_to_sheet(shippers_payload)
+                with st.spinner("⏳ गूगल शीट में केवल रूल्स सेव हो रहे हैं..."):
+                    success = push_rules_to_sheet(shippers_payload)
                     if success:
                         fetch_cached_sheet_data.clear()
                         st.session_state["sheet_data_loaded"] = False
-                        st.success("🎉 सफलता! आपके सारे रूल्स और टेम्पलेट 'Shipper_JSON_Database' के कॉलम B और C में सुरक्षित सेव हो गए हैं!")
+                        st.success("🎉 सफलता! आपके सारे रूल्स 'Shipper_JSON_Database' में सुरक्षित सेव हो गए हैं!")
                         st.balloons()
                     else:
-                        st.error("❌ सेव करते समय एरर आया!")
+                        st.error("❌ रूल्स सेव करते समय एरर आया!")
 
             render_universal_test_suite(selected_shipper)
