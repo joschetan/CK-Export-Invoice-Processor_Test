@@ -36,8 +36,29 @@ def clear_sheet_cache():
     fetch_all_from_sheet.clear()
 
 def push_all_to_sheet(shippers_json_payload):
-    """सारे शिपर का JSON डेटा कॉलम B में और Base64 टेम्पलेट्स कॉलम C में सुरक्षित सेव करता है"""
+    """बड़ी फाइलों को 50 KB के टुकड़ों (Chunks) में बांटकर गूगल शीट पर भेजता है"""
     try:
+        # 1. पहले बड़ी फाइल Base64 को चंक्स में भेजें ताकि Apps Script का CHUNK_STORE उसे पकड़ सके
+        for shipper_name, shipper_obj in shippers_json_payload.items():
+            b64_str = shipper_obj.get("file_base64", "")
+            if b64_str and len(b64_str) > 50000:  # अगर फाइल 50KB से बड़ी है तो चंकिंग करें
+                init_payload = {"action": "init_chunk", "shipper": shipper_name}
+                requests.post(WEB_APP_URL, data=json.dumps(init_payload), timeout=30)
+                
+                chunk_size = 50000
+                for i in range(0, len(b64_str), chunk_size):
+                    chunk_piece = b64_str[i:i + chunk_size]
+                    chunk_payload = {
+                        "action": "append_chunk",
+                        "shipper": shipper_name,
+                        "chunk": chunk_piece
+                    }
+                    requests.post(WEB_APP_URL, data=json.dumps(chunk_payload), timeout=30)
+                
+                # पाइथन साइड से temporary base_64 खाली कर दें क्योंकि वह चंक के जरिए सर्वर पर जुड़ चुका है
+                shipper_obj["file_base64"] = ""
+
+        # 2. अंत में सारे JSON रूल्स और सेव करने की फाइनल कमांड भेजें
         payload = {
             "action": "save_shipper_json",
             "shippers_data": shippers_json_payload
