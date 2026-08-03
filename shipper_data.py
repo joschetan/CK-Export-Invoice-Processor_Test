@@ -203,17 +203,16 @@ def render_shipper_data():
             
             if f_upload is not None:
                 file_bytes = f_upload.getvalue()
-                col_up_btn, _ = st.columns([3, 7])
-                with col_up_btn:
-                    if st.button("🚀 Upload Template File Only", type="primary", key=f"btn_upload_tpl_{selected_shipper}"):
-                        shipper_info.setdefault("uploaded_files", {})["Full Job Excel Format File"] = file_bytes
-                        with st.spinner("⏳ बड़ी टेम्पलेट फाइल टुकड़ों में गूगल शीट पर अपलोड हो रही है..."):
-                            success = push_template_file_to_sheet(selected_shipper, file_bytes)
-                            if success:
-                                st.success("🎉 टेम्पलेट फाइल सफलतापूर्वक चंक होकर सेव हो गई!")
-                                st.rerun()
-                            else:
-                                st.error("❌ टेम्पलेट अपलोड करने में एरर आया!")
+                if st.button("🚀 Upload Template to Google Sheet Only", type="primary", use_container_width=True, key=f"btn_upload_tpl_{selected_shipper}"):
+                    shipper_info.setdefault("uploaded_files", {})["Full Job Excel Format File"] = file_bytes
+                    with st.spinner("⏳ बड़ी टेम्पलेट फाइल टुकड़ों में गूगल शीट पर अपलोड हो रही है..."):
+                        success = push_template_file_to_sheet(selected_shipper, file_bytes)
+                        if success:
+                            st.success("🎉 टेम्पलेट फाइल सफलतापर्वक टुकड़ों में गूगल शीट पर सेव हो गई!")
+                            st.balloons()
+                            st.rerun()
+                        else:
+                            st.error("❌ टेम्पलेट अपलोड करने में एरर आया!")
                     
             st.write("---")
             
