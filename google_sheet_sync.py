@@ -39,11 +39,8 @@ def clear_sheet_cache():
 def push_all_to_sheet(shippers_data):
     """बड़ी फाइलों को Gzip से कम्प्रैस करके गूगल शीट पर पोस्ट करता है"""
     try:
-        # JSON स्ट्रिंग को बाइट्स में बदलकर Gzip से कम्प्रैस करें
         json_data_str = json.dumps({"action": "save_shipper_json", "shippers_data": shippers_data})
         compressed_bytes = gzip.compress(json_data_str.encode('utf-8'))
-        
-        # कम्प्रैस्ड डेटा को Base64 बनाकर भेजें ताकि HTTP पोस्ट में कोई दिक्कत न आए
         b64_payload = base64.b64encode(compressed_bytes).decode('utf-8')
         
         payload = {
@@ -56,7 +53,7 @@ def push_all_to_sheet(shippers_data):
             clear_sheet_cache()
             return True
         return False
-    except Exception as e:
+    except Exception:
         return False
 
 def load_template_bytes_from_sheet(shipper_name):
@@ -81,4 +78,14 @@ def load_template_bytes_from_sheet(shipper_name):
                         return decoded_bytes
                 except Exception:
                     pass
+    return None
+
+def load_template_from_sheet(shipper_name):
+    """गूगल शीट से शिपर की फाइल को openpyxl Workbook में बदलता है"""
+    raw_bytes = load_template_bytes_from_sheet(shipper_name)
+    if raw_bytes:
+        try:
+            return openpyxl.load_workbook(BytesIO(raw_bytes))
+        except Exception:
+            pass
     return None
