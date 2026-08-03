@@ -4,7 +4,6 @@ import json
 import base64
 from io import BytesIO
 import openpyxl
-import gzip
 
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwYVVWbqNZbzTOujVmip41KlID-rf9zEQLy_JM04ZEhUL-kixwRMD9nbPnOrZ46Fmz3/exec"
 
@@ -21,7 +20,7 @@ def get_val_case_insensitive(d, *keys, default=""):
 
 @st.cache_data(show_spinner=False)
 def fetch_all_from_sheet():
-    """गूगल शीट से सारे रूल्स और टेम्पलेट फेच करता है (कम्प्रैस्ड या नॉर्मल दोनों सपोर्ट के साथ)"""
+    """गूगल शीट के 'Shipper_JSON_Database' से JSON डेटा और टेम्पलेट्स फेच करता है"""
     try:
         response = requests.get(f"{WEB_APP_URL}?action=get_data", timeout=20)
         if response.status_code == 200:
@@ -37,21 +36,13 @@ def clear_sheet_cache():
     fetch_all_from_sheet.clear()
 
 def push_all_to_sheet(shippers_json_payload):
-    """बड़ी फाइलों और रूल्स को Gzip से कम्प्रैस करके गूगल शीट पर पोस्ट करता है"""
+    """सारे शिपर का JSON डेटा कॉलम B में और Base64 टेम्पलेट्स कॉलम C में सेव करता है"""
     try:
-        json_data_str = json.dumps({
+        payload = {
             "action": "save_shipper_json",
             "shippers_data": shippers_json_payload
-        })
-        compressed_bytes = gzip.compress(json_data_str.encode('utf-8'))
-        b64_payload = base64.b64encode(compressed_bytes).decode('utf-8')
-        
-        payload = {
-            "action": "save_compressed",
-            "payload": b64_payload
         }
-        
-        response = requests.post(WEB_APP_URL, data=json.dumps(payload), timeout=60)
+        response = requests.post(WEB_APP_URL, data=json.dumps(payload), timeout=30)
         if response.status_code == 200:
             clear_sheet_cache()
             return True
@@ -84,7 +75,6 @@ def load_template_bytes_from_sheet(shipper_name):
     return None
 
 def load_template_from_sheet(shipper_name):
-    """पुराना फंक्शन जो वैसे का वैसा रखा गया है"""
     raw_bytes = load_template_bytes_from_sheet(shipper_name)
     if raw_bytes:
         try:
