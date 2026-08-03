@@ -20,26 +20,23 @@ def get_val_case_insensitive(d, *keys, default=""):
 
 @st.cache_data(show_spinner=False)
 def fetch_all_from_sheet():
-    """गूगल शीट से डेटा फेच करता है और एरर होने पर डीबग जानकारी देता है"""
+    """गूगल शीट के 'Shipper_JSON_Database' से JSON डेटा और टेम्पलेट्स फेच करता है"""
     try:
         response = requests.get(f"{WEB_APP_URL}?action=get_data", timeout=20)
-        st.write("HTTP STATUS CODE:", response.status_code) # यह देखेगा कि गूगल ने 200 दिया या 404/500
-        res_text = response.text.strip()
-        st.write("RAW RESPONSE TEXT:", res_text[:200]) # रिस्पांस की पहली 200 लाइनें दिखाएगा
-        
         if response.status_code == 200:
+            res_text = response.text.strip()
             if res_text.startswith("<"):
-                st.error("⚠️ गूगल स्क्रिप्ट से HTML पेज आ रहा है, JSON नहीं! URL या डिप्लॉयमेंट चेक करें।")
                 return None
             return response.json()
-    except Exception as e:
-        st.error(f"Request Exception: {str(e)}")
+    except Exception:
+        pass
     return None
 
 def clear_sheet_cache():
     fetch_all_from_sheet.clear()
 
 def push_all_to_sheet(shippers_json_payload):
+    """सारे शिपर का JSON डेटा कॉलम B में और Base64 टेम्पलेट्स कॉलम C में सेव करता है"""
     try:
         payload = {
             "action": "save_shipper_json",
@@ -54,6 +51,7 @@ def push_all_to_sheet(shippers_json_payload):
         return False
 
 def load_template_bytes_from_sheet(shipper_name):
+    """गूगल शीट के कॉलम C से शिपर की Base64 फाइल को डिकोड करके बाइट्स लौटाता है"""
     data = fetch_all_from_sheet()
     if not data:
         return None
