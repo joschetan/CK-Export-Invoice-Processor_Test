@@ -29,7 +29,6 @@ def fetch_cached_sheet_data():
     return fetch_all_from_sheet()
 
 def fetch_data_from_google_sheet(show_toast=False):
-    """गूगल शीट के 'Shipper_JSON_Database' से JSON डेटा और टेम्पलेट्स फेच करता है"""
     ensure_default_shipper()
     try:
         data = fetch_cached_sheet_data()
@@ -62,7 +61,6 @@ def fetch_data_from_google_sheet(show_toast=False):
                 shipper_info["item_table_rule_name"] = s_data.get("item_table_rule_name", "Rule_Welspun")
                 shipper_info["igst_config"] = s_data.get("igst_config", {"lut_keywords": "", "paid_keywords": ""})
 
-            # कॉलम C से टेम्पलेट बाइट्स लोड करना
             t_bytes = load_template_bytes_from_sheet(s_name)
             if t_bytes:
                 shipper_info.setdefault("uploaded_files", {})["Full Job Excel Format File"] = t_bytes
@@ -241,7 +239,7 @@ def render_shipper_data():
             pdf_lines = []
             pdf_text = ""
             if test_pdf:
-                # 🟢 कोऑर्डिनेट इंजन के लिए PDF Bytes को सेव कर रहे हैं
+                # 🟢 बॉक्स इंजन के लिए PDF Bytes को सेव कर रहे हैं
                 st.session_state["cached_pdf_bytes"] = test_pdf.getvalue()
                 
                 with pdfplumber.open(test_pdf) as pdf:
@@ -304,7 +302,17 @@ def render_shipper_data():
             current_rules = shipper_info.get("mapping_rules", {})
             updated_rules = {}
             
-            pos_options = ["Right (आगे)", "Below (नीचे)", "2 Lines Below", "Table Row Item", "Table Row Index"]
+            # 🟢 यहाँ Left Box और Right Box के नए विकल्प जोड़ दिए गए हैं
+            pos_options = [
+                "Right (आगे)", 
+                "Below (नीचे)", 
+                "2 Lines Below", 
+                "📦 Left Box (बायां डिब्बा)", 
+                "📦 Right Box (दायां डिब्बा)", 
+                "Table Row Item", 
+                "Table Row Index"
+            ]
+            
             mode_options = ["Exact Word", "Word Position", "Full Line", "After Word", "Between Keywords", "Table Row Match"]
             
             filter_options = [
@@ -372,7 +380,7 @@ def render_shipper_data():
                         if not curr_pdf_lines:
                             st.toast("⚠️ पहले Section 2 में PDF अपलोड करें!")
                         else:
-                            # 🟢 कोऑर्डिनेट इंजन को pdf_bytes और field label भेज रहे हैं
+                            # 🟢 pdf_bytes और field label भेज रहे हैं ताकि बॉक्स इंजन सही से काम करे
                             pdf_bytes = st.session_state.get("cached_pdf_bytes", None)
                             res_val = extract_header_value(
                                 curr_pdf_lines, curr_pdf_text, ky, pos, m_mode, 
