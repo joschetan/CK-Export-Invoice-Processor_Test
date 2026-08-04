@@ -29,7 +29,6 @@ def apply_rule_filter(raw_text, mode, stop_kw, flt, keyword=""):
     text = raw_text.strip()
     if text.startswith(":"): text = text[1:].strip()
     
-    # अगर यह बॉक्स सिलेक्शन से आया है, तो इसे रूल्स से कटने न दें
     if keyword and ("consignee" in keyword.lower() or "buyer" in keyword.lower()):
         return text
 
@@ -75,34 +74,39 @@ def apply_rule_filter(raw_text, mode, stop_kw, flt, keyword=""):
 def extract_header_value(pdf_lines, pdf_text, keyword, position, mode, stop_kw, filter_type, field_label="", pdf_bytes=None):
     raw_t = ""
     
-    # 📦 UI-DRIVEN BOX SELECTION ENGINE (Left Box / Right Box)
-    if position in ["📦 Left Box (बायां डिब्बा)", "📦 Right Box (दायां डिब्बा)"] and pdf_bytes and keyword:
+    # 📦 SMART BOX EXTRACTION ENGINE (डब्बे के अंदर की सटीक सीमा)
+    if position == "📦 Extract Inside Box (डब्बे के अंदर का टेक्स्ट)" and pdf_bytes and keyword:
         try:
             with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
                 page = pdf.pages[0]
                 words = page.extract_words()
-                mid_point = page.width / 2  # पेज का बीच का हिस्सा (Left vs Right Box boundary)
                 
-                # कीवर्ड की Y-axis पोजीशन ढूँढना
-                kw_y = None
+                # 1. कीवर्ड की पोजीशन ढूँढना
+                kw_word = None
                 for w in words:
                     if keyword.lower() in w['text'].lower():
-                        kw_y = w['top']
+                        kw_word = w
                         break
                 
-                if kw_y is not None:
+                if kw_word:
+                    kw_x0 = kw_word['x0']
+                    kw_y0 = kw_word['top']
+                    
+                    # 2. उस डिब्बे की हदों (Box Boundaries) का अनुमान लगाना 
+                    # (कीवर्ड के आसपास के टेबल/रेक्टेंगल या लेआउट के आधार पर)
+                    box_x0 = kw_x0 - 5
+                    box_x1 = kw_x0 + 260  # एक मानक डिब्बे की चौड़ाई सीमा
+                    box_y0 = kw_y0 - 2
+                    box_y1 = kw_y0 + 130  # डिब्बे की अधिकतम ऊँचाई नीचे की तरफ
+                    
+                    # 3. सिर्फ उसी डिब्बे की बाउंड्री के अंदर आने वाले शब्दों को चुनना
                     block_words = []
-                    is_left = ("Left Box" in position)
-                    
                     for w in words:
-                        # कीवर्ड के नीचे और अगले 150 पिक्सल के अंदर के शब्द
-                        if w['top'] >= kw_y + 2 and w['top'] < kw_y + 140:
-                            if is_left and w['x0'] < mid_point:
-                                block_words.append(w)
-                            elif not is_left and w['x0'] >= mid_point:
-                                block_words.append(w)
+                        if box_x0 <= w['x0'] <= box_x1 and box_y0 <= w['top'] <= box_y1:
+                            # कीवर्ड खुद की लाइन में हो तो उसे छोड़ भी सकते हैं या रख सकते हैं
+                            block_words.append(w)
                     
-                    # शब्दों को लाइन के हिसाब से जोड़ना
+                    # 4. लाइनों को Y-Axis के हिसाब से जोड़ना
                     lines_dict = {}
                     for w in block_words:
                         line_y = round(w['top'] / 4) * 4
@@ -110,14 +114,14 @@ def extract_header_value(pdf_lines, pdf_text, keyword, position, mode, stop_kw, 
                         
                     sorted_y = sorted(lines_dict.keys())
                     result_lines = []
-                    stop_markers = ["notify:", "pre-carriage", "vessel", "port of", "place of", "terms of", "buyer", "consignee:"]
+                    stop_markers = ["notify:", "pre-carriage", "vessel", "port of", "place of", "terms of", "buyer's order"]
                     
                     for y in sorted_y:
                         line_words = sorted(lines_dict[y], key=lambda x: x['x0'])
                         line_text = " ".join([w['text'] for w in line_words]).strip()
                         if not line_text: continue
                         
-                        # अगर कोई अगला सेक्शन शुरू हो जाए तो रुक जाएं
+                        # अगर गलती से डिब्बे के बाहर का कोई मुख्य सेक्शन आ जाए तो रुक जाएं
                         lower_lt = line_text.lower()
                         if any(marker in lower_lt for marker in stop_markers if marker not in keyword.lower()):
                             break
@@ -126,7 +130,7 @@ def extract_header_value(pdf_lines, pdf_text, keyword, position, mode, stop_kw, 
                     if result_lines:
                         return "\n".join(result_lines).strip()
         except Exception:
-            pass # फेल होने पर नीचे सामान्य लॉजिक पर आ जाएगा
+            pass
 
     # --- सामान्य बैकअप लॉजिक ---
     if filter_type == "Exact Keyword Paste (If Found)":
@@ -150,7 +154,7 @@ def extract_header_value(pdf_lines, pdf_text, keyword, position, mode, stop_kw, 
     else:
         raw_t = pdf_text
 
-    if "Box" in position:
+    if position == "📦 Extract Inside Box (डब्बे के अंदर का टेक्स्ट)":
         return raw_t.strip()
         
     return apply_rule_filter(raw_t, mode, stop_kw, filter_type, keyword)
