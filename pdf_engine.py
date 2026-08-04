@@ -28,7 +28,6 @@ def apply_rule_filter(raw_text, mode, stop_kw, flt, keyword=""):
     """
     Core Unified Extraction Engine: Filters raw PDF extracted text based on user rules
     """
-    # 🎯 1. यदि नया 'Exact Keyword Paste' फिल्टर चुना गया है
     if flt == "Exact Keyword Paste (If Found)":
         target_check = stop_kw.strip() if stop_kw and str(stop_kw).strip() else keyword.strip()
         if target_check and target_check.lower() in str(raw_text).lower():
@@ -42,7 +41,6 @@ def apply_rule_filter(raw_text, mode, stop_kw, flt, keyword=""):
     if text.startswith(":"):
         text = text[1:].strip()
     
-    # अगर यह स्मार्ट ब्लॉक डिटेक्टर से आया हुआ मल्टी-लाइन डेटा है, तो रूल्स से कटने न दें
     if keyword and ("consignee" in keyword.lower() or "buyer" in keyword.lower()):
         return text
 
@@ -65,7 +63,6 @@ def apply_rule_filter(raw_text, mode, stop_kw, flt, keyword=""):
     elif mode == "Full Line":
         text = text.split("\n")[0].strip()
 
-    # 🎯 FILTERS IMPLEMENTATION
     if flt in ["Text Inside Parentheses ()", "Inside Parentheses ()"]:
         bracket_match = re.search(r'\((.*?)\)', text)
         text = bracket_match.group(1).strip() if bracket_match else text.strip()
@@ -93,7 +90,7 @@ def apply_rule_filter(raw_text, mode, stop_kw, flt, keyword=""):
 def extract_header_value(pdf_lines, pdf_text, keyword, position, mode, stop_kw, filter_type, field_label=""):
     """
     Smart Block Extraction Engine: Automatically detects and extracts multi-line address blocks 
-    and handles side-by-side columns intelligently.
+    and handles side-by-side columns intelligently without hardcoding.
     """
     raw_t = ""
     is_target_field = field_label and ("consignee" in field_label.lower() or "buyer" in field_label.lower())
@@ -113,37 +110,28 @@ def extract_header_value(pdf_lines, pdf_text, keyword, position, mode, stop_kw, 
                         break
                 elif position == "Below (नीचे)":
                     if is_target_field:
-                        # 🤖 SMART TEXT BLOCK DETECTOR (AI-like multi-line block harvester)
                         collected_lines = []
                         stop_markers = [
                             "notify:", "pre-carriage", "vessel", "port of", "place of", 
                             "terms of", "sales order", "invoice no", "buyer", "consignee:"
                         ]
                         
-                        for offset in range(1, 6):  # नीचे की 5 लाइनों तक स्मार्ट स्कैन
+                        for offset in range(1, 6):
                             if line_i + offset < len(pdf_lines):
                                 next_line = pdf_lines[line_i + offset].strip()
                                 lower_next = next_line.lower()
                                 
-                                # यदि अगला कोई मुख्य सेक्शन शुरू हो जाए तो रुक जाएं
                                 if not next_line or any(marker in lower_next for marker in stop_markers if marker not in keyword.lower()):
                                     break
                                     
-                                # साइड-बाय-साइड चिपके हुए टेक्स्ट को अलग करने का स्मार्ट तरीका
+                                # 🤖 पूरी तरह डायनेमिक साइड-बाय-साइड कटिंग (कोई हार्डकोडेड नाम नहीं)
                                 if is_consignee:
-                                    if "Welspun USA Inc - 100014" in next_line:
-                                        next_line = next_line.split("Welspun USA Inc - 100014")[0].strip()
-                                    elif "New York" in next_line:
-                                        next_line = next_line.split("New York")[0].strip()
-                                    if next_line:
-                                        collected_lines.append(next_line)
-                                else:
-                                    if "Welspun USA Inc - 100014" in next_line:
-                                        next_line = "Welspun USA Inc - 100014" + next_line.split("Welspun USA Inc - 100014")[1]
-                                    elif "501037" in next_line:
-                                        parts = next_line.split("501037")
-                                        if len(parts) > 1:
-                                            next_line = parts[1].strip()
+                                    for marker in ["buyer", "notify:", "pre-carriage", "vessel"]:
+                                        if marker in lower_next:
+                                            next_line = next_line.split(marker)[0].strip()
+                                            break
+                                
+                                if next_line:
                                     collected_lines.append(next_line)
                                     
                         if collected_lines:
@@ -169,28 +157,22 @@ def extract_header_value(pdf_lines, pdf_text, keyword, position, mode, stop_kw, 
 
 def detect_igst_status(pdf_text, lut_keywords="", paid_keywords=""):
     """
-    Detects whether invoice is 'LUT' or 'P' based on shipper custom keywords
-    Returns: 'LUT', 'P', or 'UNKNOWN'
+    Detects whether invoice is 'LUT' or 'P' strictly based on user-defined UI keywords.
     """
     if not pdf_text:
         return "UNKNOWN"
         
     text_lower = pdf_text.lower()
     
-    default_lut_kws = ["lut arn no", "w/o payment", "without payment", "under bond", "letter of undertaking"]
+    # केवल UI में दिए गए कीवर्ड्स से ही मैच होगा (कोई फालतू या हार्डकोडेड डिफ़ॉल्ट नहीं)
     custom_lut_kws = [k.strip().lower() for k in lut_keywords.split(",") if k.strip()]
-    all_lut_kws = list(set(default_lut_kws + custom_lut_kws))
-    
-    for kw in all_lut_kws:
+    for kw in custom_lut_kws:
         if kw in text_lower:
             return "LUT"
             
-    default_paid_kws = ["on payment of integrated tax", "with payment of integrated tax", "payment of integrated tax"]
     custom_paid_kws = [k.strip().lower() for k in paid_keywords.split(",") if k.strip()]
-    all_paid_kws = list(set(default_paid_kws + custom_paid_kws))
-    
-    for kw in all_paid_kws:
+    for kw in custom_paid_kws:
         if kw in text_lower:
-            return "P"
+            return "P" 
             
     return "UNKNOWN"
