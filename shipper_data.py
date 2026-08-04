@@ -210,7 +210,6 @@ def render_shipper_data():
                             st.session_state["show_uploader"] = True
                             st.rerun()
             
-            # यदि फाइल नहीं है या यूजर ने 'Replace' दबाया है, तभी फाइल-अपलोडर दिखेगा
             if not has_file or st.session_state.get("show_uploader", False):
                 if has_file:
                     st.info("ℹ️ नई फाइल चुनकर नीचे दिए गए बटन से पुरानी फाइल को बदलें:")
@@ -242,6 +241,9 @@ def render_shipper_data():
             pdf_lines = []
             pdf_text = ""
             if test_pdf:
+                # 🟢 कोऑर्डिनेट इंजन के लिए PDF Bytes को सेव कर रहे हैं
+                st.session_state["cached_pdf_bytes"] = test_pdf.getvalue()
+                
                 with pdfplumber.open(test_pdf) as pdf:
                     for page in pdf.pages:
                         t = page.extract_text()
@@ -370,7 +372,13 @@ def render_shipper_data():
                         if not curr_pdf_lines:
                             st.toast("⚠️ पहले Section 2 में PDF अपलोड करें!")
                         else:
-                            res_val = extract_header_value(curr_pdf_lines, curr_pdf_text, ky, pos, m_mode, stop_kw, final_flt)
+                            # 🟢 कोऑर्डिनेट इंजन को pdf_bytes और field label भेज रहे हैं
+                            pdf_bytes = st.session_state.get("cached_pdf_bytes", None)
+                            res_val = extract_header_value(
+                                curr_pdf_lines, curr_pdf_text, ky, pos, m_mode, 
+                                stop_kw, final_flt, field_label=edited_name, pdf_bytes=pdf_bytes
+                            )
+                            
                             if not res_val or not res_val.strip():
                                 res_val = fb_val
                             
@@ -466,7 +474,6 @@ def render_shipper_data():
             shipper_info["item_table_rules"] = updated_item_rules
             st.write("---")
             
-            # 💾 केवल रूल्स सेव करने के लिए अलग बटन
             if st.button("💾 Save Rules Only to Google Sheet", type="primary", use_container_width=True, key="btn_save_rules_sheet"):
                 shippers_payload = {}
                 for s_name, s_data in st.session_state["shipper_database"].items():
