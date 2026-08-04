@@ -1,46 +1,33 @@
 import re
+import io
+import pdfplumber
 
 def apply_value_replacement(extracted_text, mapping_str):
-    """
-    Parses 'FIND=REPLACE, FIND2=REPLACE2' mapping syntax and applies it to extracted_text.
-    """
     if not extracted_text or not mapping_str or "=" not in mapping_str:
         return extracted_text
-
     text_clean = str(extracted_text).strip()
     pairs = [p.strip() for p in mapping_str.split(",") if "=" in p]
-    
     for pair in pairs:
         parts = pair.split("=")
         if len(parts) == 2:
             find_kw = parts[0].strip()
             replace_kw = parts[1].strip()
-            
             if text_clean.lower() == find_kw.lower():
                 return replace_kw
             elif find_kw.lower() in text_clean.lower():
                 pattern = re.compile(re.escape(find_kw), re.IGNORECASE)
                 return pattern.sub(replace_kw, text_clean)
-                
     return text_clean
 
 def apply_rule_filter(raw_text, mode, stop_kw, flt, keyword=""):
-    """
-    Core Unified Extraction Engine: Filters raw PDF extracted text based on user rules
-    """
     if flt == "Exact Keyword Paste (If Found)":
         target_check = stop_kw.strip() if stop_kw and str(stop_kw).strip() else keyword.strip()
         if target_check and target_check.lower() in str(raw_text).lower():
             return target_check
         return target_check if target_check else ""
-
-    if not raw_text:
-        return ""
-        
+    if not raw_text: return ""
     text = raw_text.strip()
-    if text.startswith(":"):
-        text = text[1:].strip()
-    
+    if text.startswith(":"): text = text[1:].strip()
     if keyword and ("consignee" in keyword.lower() or "buyer" in keyword.lower()):
         return text
 
@@ -52,8 +39,7 @@ def apply_rule_filter(raw_text, mode, stop_kw, flt, keyword=""):
         if "=" not in stop_kw and stop_kw.lower() in text.lower():
             start_idx = text.lower().find(stop_kw.lower()) + len(stop_kw)
             text = text[start_idx:].strip()
-            if text.startswith(":"):
-                text = text[1:].strip()
+            if text.startswith(":"): text = text[1:].strip()
     elif mode == "Between Keywords" and stop_kw:
         if "=" not in stop_kw and stop_kw.lower() in text.lower():
             text = text.lower().split(stop_kw.lower())[0].strip()
@@ -80,22 +66,64 @@ def apply_rule_filter(raw_text, mode, stop_kw, flt, keyword=""):
         d_match = re.search(r'\b\d{2}[./-]\d{2}[./-]\d{4}\b', text)
         text = d_match.group(0).replace(".", "/").replace("-", "/") if d_match else text.strip()
 
-    if stop_kw and "=" in stop_kw:
-        text = apply_value_replacement(text, stop_kw)
-    if flt and "=" in flt:
-        text = apply_value_replacement(text, flt)
-
+    if stop_kw and "=" in stop_kw: text = apply_value_replacement(text, stop_kw)
+    if flt and "=" in flt: text = apply_value_replacement(text, flt)
     return text.strip()
 
-def extract_header_value(pdf_lines, pdf_text, keyword, position, mode, stop_kw, filter_type, field_label=""):
-    """
-    Smart Block Extraction Engine: Automatically detects and extracts multi-line address blocks 
-    and handles side-by-side columns intelligently without hardcoding.
-    """
+# यहाँ PDF Bytes रिसीव करने के लिए नया पैरामीटर pdf_bytes=None जोड़ा गया है
+def extract_header_value(pdf_lines, pdf_text, keyword, position, mode, stop_kw, filter_type, field_label="", pdf_bytes=None):
     raw_t = ""
     is_target_field = field_label and ("consignee" in field_label.lower() or "buyer" in field_label.lower())
     is_consignee = field_label and "consignee" in field_label.lower()
+    is_buyer = field_label and "buyer" in field_label.lower()
     
+    # 🧠 SMART COORDINATE ENGINE: सिर्फ बाएँ या दाएँ हिस्से का टेक्स्ट उठाएगा
+    if is_target_field and pdf_bytes and keyword:
+        try:
+            with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+                page = pdf.pages[0]
+                words = page.extract_words()
+                mid_point = page.width / 2 # पेज का बीच का हिस्सा
+                
+                kw_y = None
+                for w in words:
+                    if keyword.lower() in w['text'].lower():
+                        kw_y = w['top']
+                        break
+                
+                if kw_y is not None:
+                    block_words = []
+                    for w in words:
+                        if w['top'] >= kw_y + 8: # कीवर्ड के नीचे वाली लाइनें
+                            # Consignee के लिए सिर्फ लेफ्ट साइड, Buyer के लिए सिर्फ राइट साइड
+                            if is_consignee and w['x0'] < mid_point:
+                                block_words.append(w)
+                            elif is_buyer and w['x0'] >= mid_point:
+                                block_words.append(w)
+                    
+                    # शब्दों को लाइन के हिसाब से जोड़ना
+                    lines_dict = {}
+                    for w in block_words:
+                        line_y = round(w['top'] / 4) * 4
+                        lines_dict.setdefault(line_y, []).append(w)
+                        
+                    sorted_y = sorted(lines_dict.keys())
+                    result_lines = []
+                    stop_markers = ["notify:", "pre-carriage", "vessel", "port of", "place of", "country of origin"]
+                    
+                    for y in sorted_y:
+                        line_words = sorted(lines_dict[y], key=lambda x: x['x0'])
+                        line_text = " ".join([w['text'] for w in line_words]).strip()
+                        if not line_text: continue
+                        if any(marker in line_text.lower() for marker in stop_markers): break
+                        result_lines.append(line_text)
+                        
+                    if result_lines:
+                        return "\n".join(result_lines).strip()
+        except Exception:
+            pass # अगर कोऑर्डिनेट काम न करे तो पुराने लॉजिक पर आ जाएगा
+
+    # --- पुराना बैकअप लॉजिक ---
     if filter_type == "Exact Keyword Paste (If Found)":
         raw_t = pdf_text
     elif keyword:
@@ -104,75 +132,29 @@ def extract_header_value(pdf_lines, pdf_text, keyword, position, mode, stop_kw, 
                 if position == "Right (आगे)":
                     start_idx = line.lower().find(keyword.lower()) + len(keyword)
                     raw_t = line[start_idx:].strip()
-                    if raw_t.startswith(":"):
-                        raw_t = raw_t[1:].strip()
-                    if raw_t:
-                        break
+                    if raw_t.startswith(":"): raw_t = raw_t[1:].strip()
+                    if raw_t: break
                 elif position == "Below (नीचे)":
-                    if is_target_field:
-                        collected_lines = []
-                        stop_markers = [
-                            "notify:", "pre-carriage", "vessel", "port of", "place of", 
-                            "terms of", "sales order", "invoice no", "buyer", "consignee:"
-                        ]
-                        
-                        for offset in range(1, 6):
-                            if line_i + offset < len(pdf_lines):
-                                next_line = pdf_lines[line_i + offset].strip()
-                                lower_next = next_line.lower()
-                                
-                                if not next_line or any(marker in lower_next for marker in stop_markers if marker not in keyword.lower()):
-                                    break
-                                    
-                                # 🤖 पूरी तरह डायनेमिक साइड-बाय-साइड कटिंग (कोई हार्डकोडेड नाम नहीं)
-                                if is_consignee:
-                                    for marker in ["buyer", "notify:", "pre-carriage", "vessel"]:
-                                        if marker in lower_next:
-                                            next_line = next_line.split(marker)[0].strip()
-                                            break
-                                
-                                if next_line:
-                                    collected_lines.append(next_line)
-                                    
-                        if collected_lines:
-                            raw_t = "\n".join([cl for cl in collected_lines if cl])
-                            break
-                    else:
-                        if line_i + 1 < len(pdf_lines):
-                            raw_t = pdf_lines[line_i + 1].strip()
-                            if raw_t:
-                                break
+                    if line_i + 1 < len(pdf_lines):
+                        raw_t = pdf_lines[line_i + 1].strip()
+                        if raw_t: break
                 elif position == "2 Lines Below":
                     if line_i + 2 < len(pdf_lines):
                         raw_t = pdf_lines[line_i + 2].strip()
-                        if raw_t:
-                            break
+                        if raw_t: break
     else:
         raw_t = pdf_text
 
-    if is_target_field:
-        return raw_t.strip()
-
+    if is_target_field: return raw_t.strip()
     return apply_rule_filter(raw_t, mode, stop_kw, filter_type, keyword)
 
 def detect_igst_status(pdf_text, lut_keywords="", paid_keywords=""):
-    """
-    Detects whether invoice is 'LUT' or 'P' strictly based on user-defined UI keywords.
-    """
-    if not pdf_text:
-        return "UNKNOWN"
-        
+    if not pdf_text: return "UNKNOWN"
     text_lower = pdf_text.lower()
-    
-    # केवल UI में दिए गए कीवर्ड्स से ही मैच होगा (कोई फालतू या हार्डकोडेड डिफ़ॉल्ट नहीं)
     custom_lut_kws = [k.strip().lower() for k in lut_keywords.split(",") if k.strip()]
     for kw in custom_lut_kws:
-        if kw in text_lower:
-            return "LUT"
-            
+        if kw in text_lower: return "LUT"
     custom_paid_kws = [k.strip().lower() for k in paid_keywords.split(",") if k.strip()]
     for kw in custom_paid_kws:
-        if kw in text_lower:
-            return "P" 
-            
+        if kw in text_lower: return "P" 
     return "UNKNOWN"
