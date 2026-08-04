@@ -28,6 +28,8 @@ def apply_rule_filter(raw_text, mode, stop_kw, flt, keyword=""):
     if not raw_text: return ""
     text = raw_text.strip()
     if text.startswith(":"): text = text[1:].strip()
+    
+    # अगर यह बॉक्स सिलेक्शन से आया है, तो इसे रूल्स से कटने न दें
     if keyword and ("consignee" in keyword.lower() or "buyer" in keyword.lower()):
         return text
 
@@ -70,21 +72,18 @@ def apply_rule_filter(raw_text, mode, stop_kw, flt, keyword=""):
     if flt and "=" in flt: text = apply_value_replacement(text, flt)
     return text.strip()
 
-# यहाँ PDF Bytes रिसीव करने के लिए नया पैरामीटर pdf_bytes=None जोड़ा गया है
 def extract_header_value(pdf_lines, pdf_text, keyword, position, mode, stop_kw, filter_type, field_label="", pdf_bytes=None):
     raw_t = ""
-    is_target_field = field_label and ("consignee" in field_label.lower() or "buyer" in field_label.lower())
-    is_consignee = field_label and "consignee" in field_label.lower()
-    is_buyer = field_label and "buyer" in field_label.lower()
     
-    # 🧠 SMART COORDINATE ENGINE: सिर्फ बाएँ या दाएँ हिस्से का टेक्स्ट उठाएगा
-    if is_target_field and pdf_bytes and keyword:
+    # 📦 UI-DRIVEN BOX SELECTION ENGINE (Left Box / Right Box)
+    if position in ["📦 Left Box (बायां डिब्बा)", "📦 Right Box (दायां डिब्बा)"] and pdf_bytes and keyword:
         try:
             with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
                 page = pdf.pages[0]
                 words = page.extract_words()
-                mid_point = page.width / 2 # पेज का बीच का हिस्सा
+                mid_point = page.width / 2  # पेज का बीच का हिस्सा (Left vs Right Box boundary)
                 
+                # कीवर्ड की Y-axis पोजीशन ढूँढना
                 kw_y = None
                 for w in words:
                     if keyword.lower() in w['text'].lower():
@@ -93,12 +92,14 @@ def extract_header_value(pdf_lines, pdf_text, keyword, position, mode, stop_kw, 
                 
                 if kw_y is not None:
                     block_words = []
+                    is_left = ("Left Box" in position)
+                    
                     for w in words:
-                        if w['top'] >= kw_y + 8: # कीवर्ड के नीचे वाली लाइनें
-                            # Consignee के लिए सिर्फ लेफ्ट साइड, Buyer के लिए सिर्फ राइट साइड
-                            if is_consignee and w['x0'] < mid_point:
+                        # कीवर्ड के नीचे और अगले 150 पिक्सल के अंदर के शब्द
+                        if w['top'] >= kw_y + 2 and w['top'] < kw_y + 140:
+                            if is_left and w['x0'] < mid_point:
                                 block_words.append(w)
-                            elif is_buyer and w['x0'] >= mid_point:
+                            elif not is_left and w['x0'] >= mid_point:
                                 block_words.append(w)
                     
                     # शब्दों को लाइन के हिसाब से जोड़ना
@@ -109,21 +110,25 @@ def extract_header_value(pdf_lines, pdf_text, keyword, position, mode, stop_kw, 
                         
                     sorted_y = sorted(lines_dict.keys())
                     result_lines = []
-                    stop_markers = ["notify:", "pre-carriage", "vessel", "port of", "place of", "country of origin"]
+                    stop_markers = ["notify:", "pre-carriage", "vessel", "port of", "place of", "terms of", "buyer", "consignee:"]
                     
                     for y in sorted_y:
                         line_words = sorted(lines_dict[y], key=lambda x: x['x0'])
                         line_text = " ".join([w['text'] for w in line_words]).strip()
                         if not line_text: continue
-                        if any(marker in line_text.lower() for marker in stop_markers): break
+                        
+                        # अगर कोई अगला सेक्शन शुरू हो जाए तो रुक जाएं
+                        lower_lt = line_text.lower()
+                        if any(marker in lower_lt for marker in stop_markers if marker not in keyword.lower()):
+                            break
                         result_lines.append(line_text)
                         
                     if result_lines:
                         return "\n".join(result_lines).strip()
         except Exception:
-            pass # अगर कोऑर्डिनेट काम न करे तो पुराने लॉजिक पर आ जाएगा
+            pass # फेल होने पर नीचे सामान्य लॉजिक पर आ जाएगा
 
-    # --- पुराना बैकअप लॉजिक ---
+    # --- सामान्य बैकअप लॉजिक ---
     if filter_type == "Exact Keyword Paste (If Found)":
         raw_t = pdf_text
     elif keyword:
@@ -145,7 +150,9 @@ def extract_header_value(pdf_lines, pdf_text, keyword, position, mode, stop_kw, 
     else:
         raw_t = pdf_text
 
-    if is_target_field: return raw_t.strip()
+    if "Box" in position:
+        return raw_t.strip()
+        
     return apply_rule_filter(raw_t, mode, stop_kw, filter_type, keyword)
 
 def detect_igst_status(pdf_text, lut_keywords="", paid_keywords=""):
