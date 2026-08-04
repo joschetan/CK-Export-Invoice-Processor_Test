@@ -302,13 +302,12 @@ def render_shipper_data():
             current_rules = shipper_info.get("mapping_rules", {})
             updated_rules = {}
             
-            # 🟢 यहाँ Left Box और Right Box के नए विकल्प जोड़ दिए गए हैं
+            # 📦 केवल एक साफ़-सुथरा '📦 Extract Inside Box' विकल्प पोजीशन में जोड़ दिया गया है
             pos_options = [
                 "Right (आगे)", 
                 "Below (नीचे)", 
                 "2 Lines Below", 
-                "📦 Left Box (बायां डिब्बा)", 
-                "📦 Right Box (दायां डिब्बा)", 
+                "📦 Extract Inside Box (डब्बे के अंदर का टेक्स्ट)", 
                 "Table Row Item", 
                 "Table Row Index"
             ]
@@ -380,7 +379,7 @@ def render_shipper_data():
                         if not curr_pdf_lines:
                             st.toast("⚠️ पहले Section 2 में PDF अपलोड करें!")
                         else:
-                            # 🟢 pdf_bytes और field label भेज रहे हैं ताकि बॉक्स इंजन सही से काम करे
+                            # 🟢 pdf_bytes भेज रहे हैं ताकि बॉक्स बाउंड्री इंजन काम कर सके
                             pdf_bytes = st.session_state.get("cached_pdf_bytes", None)
                             res_val = extract_header_value(
                                 curr_pdf_lines, curr_pdf_text, ky, pos, m_mode, 
