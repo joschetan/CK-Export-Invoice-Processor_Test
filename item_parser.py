@@ -7,11 +7,16 @@ from parser_bkt import extract_bkt_items
 def extract_item_table_rows(pdf_lines, parser_rule="Rule_Welspun"):
     rule_name = str(parser_rule).strip().lower()
     
-    # फ्लेक्सिबल चेक ताकि BALKRISHNA INDUSTRIES LIMITED या BKT नाम मिलने पर हमेशा BKT पार्सर ही चले
+    # यहाँ डिबगिंग के लिए स्क्रीन पर प्रिंट/वॉर्निंग दिखेगी
     if "balkrishna" in rule_name or "bkt" in rule_name or rule_name == "rule_bkt":
-        return extract_bkt_items(pdf_lines)
+        st.info("🟢 **Parser Status:** BKT (`BALKRISHNA INDUSTRIES LIMITED`) Rule Triggered!")
+        parsed_result = extract_bkt_items(pdf_lines)
     else:
-        return extract_welspun_items(pdf_lines)
+        st.info("🔵 **Parser Status:** Welspun Rule Triggered!")
+        parsed_result = extract_welspun_items(pdf_lines)
+        
+    st.write(f"🔍 **Debug - Extracted Items Count:** {len(parsed_result)}")
+    return parsed_result
 
 @st.dialog("⚠️ Urgent: Manual IGST Status Required")
 def get_manual_igst_choice(invoice_identifier):
