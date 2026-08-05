@@ -132,7 +132,8 @@ def render_processor():
                                 target_lines = deec_text.split("\n")
                                 target_full_text = deec_text
                                 
-                            found_val = extract_header_value(target_lines, target_full_text, kw, pos, mode, stop_kw, flt, field_label=field)
+                            pdf_bytes = st.session_state.get("cached_pdf_bytes", None)
+                            found_val = extract_header_value(target_lines, target_full_text, kw, pos, mode, stop_kw, flt, field_label=field, pdf_bytes=pdf_bytes)
                             
                             if not found_val or not found_val.strip():
                                 if fallback_val:
@@ -140,14 +141,23 @@ def render_processor():
                                     
                             inv_data_dict[field.lower()] = found_val
                             
+                            # 🚀 MULTI-LINE DYNAMIC ROW EXPANSION LOGIC FOR EXCEL
                             if target_cell and "dynamic" not in target_cell.lower():
-                                if target_cell.isalpha():
-                                    cell_to_write = f"{target_cell}{summary_row}"
-                                else:
-                                    cell_to_write = target_cell
-                                
                                 try:
-                                    ws[cell_to_write] = found_val
+                                    if "\n" in str(found_val):
+                                        col_letters = re.findall(r'[A-Za-z]+', target_cell)[0].upper()
+                                        start_row_num = int(re.findall(r'\d+', target_cell)[0]) if re.findall(r'\d+', target_cell) else summary_row
+                                        
+                                        lines = str(found_val).split("\n")
+                                        for idx, line_val in enumerate(lines):
+                                            current_row = start_row_num + idx
+                                            ws[f"{col_letters}{current_row}"] = line_val.strip()
+                                    else:
+                                        if target_cell.isalpha():
+                                            cell_to_write = f"{target_cell}{summary_row}"
+                                        else:
+                                            cell_to_write = target_cell
+                                        ws[cell_to_write] = found_val
                                 except Exception:
                                     pass
                             
