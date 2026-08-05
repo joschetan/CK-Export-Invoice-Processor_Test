@@ -93,7 +93,6 @@ def extract_header_value(pdf_lines, pdf_text, keyword, position, mode, stop_kw, 
                     kw_y0 = kw_word['top']
                     
                     # 2. उस डिब्बे की हदों (Box Boundaries) का अनुमान लगाना 
-                    # (कीवर्ड के आसपास के टेबल/रेक्टेंगल या लेआउट के आधार पर)
                     box_x0 = kw_x0 - 5
                     box_x1 = kw_x0 + 260  # एक मानक डिब्बे की चौड़ाई सीमा
                     box_y0 = kw_y0 - 2
@@ -103,7 +102,6 @@ def extract_header_value(pdf_lines, pdf_text, keyword, position, mode, stop_kw, 
                     block_words = []
                     for w in words:
                         if box_x0 <= w['x0'] <= box_x1 and box_y0 <= w['top'] <= box_y1:
-                            # कीवर्ड खुद की लाइन में हो तो उसे छोड़ भी सकते हैं या रख सकते हैं
                             block_words.append(w)
                     
                     # 4. लाइनों को Y-Axis के हिसाब से जोड़ना
@@ -121,7 +119,6 @@ def extract_header_value(pdf_lines, pdf_text, keyword, position, mode, stop_kw, 
                         line_text = " ".join([w['text'] for w in line_words]).strip()
                         if not line_text: continue
                         
-                        # अगर गलती से डिब्बे के बाहर का कोई मुख्य सेक्शन आ जाए तो रुक जाएं
                         lower_lt = line_text.lower()
                         if any(marker in lower_lt for marker in stop_markers if marker not in keyword.lower()):
                             break
