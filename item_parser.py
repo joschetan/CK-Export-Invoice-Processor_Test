@@ -5,11 +5,10 @@ from parser_welspun import extract_welspun_items
 from parser_bkt import extract_bkt_items
 
 def extract_item_table_rows(pdf_lines, parser_rule="Rule_Welspun"):
-    rule_name = str(parser_rule).strip()
+    rule_name = str(parser_rule).strip().lower()
     
-    if rule_name == "Rule_Welspun":
-        return extract_welspun_items(pdf_lines)
-    elif rule_name == "BALKRISHNA INDUSTRIES LIMITED" or rule_name == "Rule_BKT":
+    # फ्लेक्सिबल चेक ताकि BALKRISHNA INDUSTRIES LIMITED या BKT नाम मिलने पर हमेशा BKT पार्सर ही चले
+    if "balkrishna" in rule_name or "bkt" in rule_name or rule_name == "rule_bkt":
         return extract_bkt_items(pdf_lines)
     else:
         return extract_welspun_items(pdf_lines)
