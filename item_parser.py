@@ -5,20 +5,14 @@ from parser_welspun import extract_welspun_items
 from parser_bkt import extract_bkt_items
 
 def extract_item_table_rows(pdf_lines, parser_rule="Rule_Welspun"):
-    rule_name = str(parser_rule).strip().lower()
+    rule_name = str(parser_rule).strip()
     
-    # कंसोल लॉग में प्रिंट करने के लिए ताकि सर्वर क्रैश न हो
-    print(f"DEBUG: Active Parser Rule Received -> {parser_rule}")
-    
-    if "balkrishna" in rule_name or "bkt" in rule_name or rule_name == "rule_bkt":
-        print("DEBUG: Executing BKT Parser...")
-        parsed_result = extract_bkt_items(pdf_lines)
+    if rule_name == "Rule_Welspun":
+        return extract_welspun_items(pdf_lines)
+    elif rule_name == "BALKRISHNA INDUSTRIES LIMITED" or rule_name == "Rule_BKT":
+        return extract_bkt_items(pdf_lines)
     else:
-        print("DEBUG: Executing Welspun Parser...")
-        parsed_result = extract_welspun_items(pdf_lines)
-        
-    print(f"DEBUG: Total Items Extracted -> {len(parsed_result)}")
-    return parsed_result
+        return extract_welspun_items(pdf_lines)
 
 @st.dialog("⚠️ Urgent: Manual IGST Status Required")
 def get_manual_igst_choice(invoice_identifier):
