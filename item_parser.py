@@ -9,7 +9,7 @@ def extract_item_table_rows(pdf_lines, parser_rule="Rule_Welspun"):
     
     if rule_name == "Rule_Welspun":
         return extract_welspun_items(pdf_lines)
-    elif rule_name == "Rule_BKT":
+    elif rule_name == "BALKRISHNA INDUSTRIES LIMITED" or rule_name == "Rule_BKT":
         return extract_bkt_items(pdf_lines)
     else:
         return extract_welspun_items(pdf_lines)
