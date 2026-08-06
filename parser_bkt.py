@@ -2,8 +2,7 @@ import re
 
 def extract_bkt_items(pdf_lines):
     """
-    BKT Dedicated Item Table Parser Logic (Strictly skips header/empty match lines, 
-    forces Text format for 10-digit License number to preserve leading zeros).
+    BKT Dedicated Item Table Parser Logic (Clean, Exact 5 Rows, Text Format for License, Upper Case Safe).
     """
     parsed_items = []
     seen_identifiers = set()
@@ -30,11 +29,10 @@ def extract_bkt_items(pdf_lines):
             # 1. HS Code
             hs_code = hs_match.group(1)
             
-            # 2. License No & Date (प्रारंभिक शून्य/Leading Zero बचाने के लिए सिंगल कोट के साथ टेक्स्ट फॉर्मेट)
+            # 2. License No & Date (प्रारंभिक शून्य/Leading Zero बचाने के लिए टेक्स्ट फॉर्मेट)
             lic_match = re.search(r'(\d{10})\s*(?:dtd\.?|date)?\s*([\d./-]+)', line_str, re.IGNORECASE)
             if lic_match:
                 raw_lic = lic_match.group(1).strip()
-                # एक्सेल में टेक्स्ट के रूप में रखने के लिए एपोस्ट्रोफी का प्रयोग ताकि आगे का जीरो न गायब हो
                 license_no = f"'{raw_lic}" if not raw_lic.startswith("'") else raw_lic
                 license_date = lic_match.group(2).strip().replace(".", "/")
             else:
@@ -53,7 +51,7 @@ def extract_bkt_items(pdf_lines):
             qty = filtered_nums[0] if len(filtered_nums) > 0 else ""
             val = filtered_nums[1] if len(filtered_nums) > 1 else ""
             
-            # 🛑 सबसे ज़रूरी बदलाव: यदि क्वांटिटी या वैल्यू ही गायब है (यानी ऊपर की हेडर लाइन है), तो उसे सीधे छोड़ दो!
+            # 🛑 ऊपर की झूठी/हेडर लाइनों को हटाने का नियम
             if not qty or not val:
                 continue
             
@@ -72,9 +70,12 @@ def extract_bkt_items(pdf_lines):
             elif parts:
                 mat_grp = parts[0]
             
+            # यदि लाइन में इनवॉइस नंबर जैसी कोई स्ट्रिंग छोटे अक्षरों में आ रही हो, तो उसे कैपिटल करने का प्रावधान
+            cleaned_line_text = line_str.upper()
+            
             item_dict = {
                 "raw_parts": parts,
-                "line_text": line_str,
+                "line_text": cleaned_line_text,
                 "hs_code": hs_code,
                 "license_no": license_no,
                 "license_date": license_date,
