@@ -2,7 +2,8 @@ import re
 
 def extract_bkt_items(pdf_lines):
     """
-    BKT Dedicated Item Table Parser Logic (Flexible HS Codes, Dynamic Material Group, Exact 5/Target Rows).
+    BKT Dedicated Item Table Parser Logic (Strictly skips header/empty match lines, 
+    forces Text format for 10-digit License number to preserve leading zeros).
     """
     parsed_items = []
     seen_identifiers = set()
@@ -18,7 +19,7 @@ def extract_bkt_items(pdf_lines):
         if "sub total" in lower_line or "sub_total" in lower_line or lower_line.startswith("total") or "tare weight" in lower_line:
             continue
             
-        # ✅ नया फ्लेक्सिबल कंडीशन: HS Code अब 4011, 4012, 4013, 4016, 8431, 8432, 8433 किसी से भी शुरू हो सकता है
+        # ✅ HS Code कंडीशन
         hs_match = re.search(r'\b(401[1236]\d{4}|843[123]\d{4})\b', line_str)
         if hs_match:
             if "sub total" in lower_line:
@@ -29,10 +30,12 @@ def extract_bkt_items(pdf_lines):
             # 1. HS Code
             hs_code = hs_match.group(1)
             
-            # 2. License No & Date (Column AD के लिए आगे का जीरो बचाने हेतु टेक्स्ट फॉर्मेट)
+            # 2. License No & Date (प्रारंभिक शून्य/Leading Zero बचाने के लिए सिंगल कोट के साथ टेक्स्ट फॉर्मेट)
             lic_match = re.search(r'(\d{10})\s*(?:dtd\.?|date)?\s*([\d./-]+)', line_str, re.IGNORECASE)
             if lic_match:
-                license_no = "\t" + lic_match.group(1).strip()
+                raw_lic = lic_match.group(1).strip()
+                # एक्सेल में टेक्स्ट के रूप में रखने के लिए एपोस्ट्रोफी का प्रयोग ताकि आगे का जीरो न गायब हो
+                license_no = f"'{raw_lic}" if not raw_lic.startswith("'") else raw_lic
                 license_date = lic_match.group(2).strip().replace(".", "/")
             else:
                 license_no = ""
@@ -50,13 +53,17 @@ def extract_bkt_items(pdf_lines):
             qty = filtered_nums[0] if len(filtered_nums) > 0 else ""
             val = filtered_nums[1] if len(filtered_nums) > 1 else ""
             
+            # 🛑 सबसे ज़रूरी बदलाव: यदि क्वांटिटी या वैल्यू ही गायब है (यानी ऊपर की हेडर लाइन है), तो उसे सीधे छोड़ दो!
+            if not qty or not val:
+                continue
+            
             # डुप्लीकेट रोकने के लिए यूनिक चेक
             unique_key = f"{hs_code}_{qty}_{val}"
             if unique_key in seen_identifiers:
                 continue
             seen_identifiers.add(unique_key)
             
-            # 4. मटीरियल ग्रुप (अब यह फिक्स 'Tyres' नहीं रहेगा, लाइन के हिसाब से Tyres, Tubes या जो भी होगा उठ जाएगा)
+            # 4. मटीरियल ग्रुप
             mat_grp = "Tyres"
             if "tube" in lower_line:
                 mat_grp = "Tubes"
