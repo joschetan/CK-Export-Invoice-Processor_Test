@@ -5,16 +5,19 @@ from parser_welspun import extract_welspun_items
 from parser_bkt import extract_bkt_items
 
 def extract_item_table_rows(pdf_lines, parser_rule="Rule_Welspun"):
-    rule_name = str(parser_rule).strip()
+    rule_name = str(parser_rule).strip().lower()
     
-    # 🔍 यह कंसोल में प्रिंट करेगा कि असल में शिपर का क्या नाम पास होकर आ रहा है
-    print(f"DEBUG_PARSER -> Received rule_name: [{rule_name}]")
-    
-    if rule_name == "BALKRISHNA INDUSTRIES LIMITED" or rule_name == "Rule_BKT":
-        print("DEBUG_PARSER -> Matched BKT! Calling extract_bkt_items...")
+    # 1. अगर शिपर के नाम में BKT या Balkrishna है, तो सीधे BKT वाला पार्सर चलाओ
+    if "bkt" in rule_name or "balkrishna" in rule_name or rule_name == "rule_bkt":
         return extract_bkt_items(pdf_lines)
+        
+    # 2. अगर शिपर Welspun है, तो Welspun वाला पार्सर चलाओ
+    elif "welspun" in rule_name or rule_name == "rule_welspun":
+        return extract_welspun_items(pdf_lines)
+        
+    # 3. अगर किसी अन्य शिपर के लिए कोई अलग .py फाइल नहीं बनाई गई है, 
+    # तो डिफ़ॉल्ट रूप से Welspun का रूल फॉलो किया जाएगा
     else:
-        print("DEBUG_PARSER -> Not BKT, falling back to extract_welspun_items...")
         return extract_welspun_items(pdf_lines)
 
 @st.dialog("⚠️ Urgent: Manual IGST Status Required")
