@@ -3,8 +3,8 @@ import re
 def extract_bkt_items(pdf_lines):
     """
     BKT Dedicated Item Table Parser Logic.
-    Extracts exact item rows based on table structure, accurately capturing Quantity,
-    Value, Gross Wt, Net Wt, and License details without hardcoding HS Code prefixes.
+    Strictly skips 'SUB TOTAL', 'Total', and 'Tare Weight' lines, 
+    and extracts accurate data only from the main item rows.
     """
     parsed_items = []
     
@@ -15,12 +15,13 @@ def extract_bkt_items(pdf_lines):
             
         lower_line = line_str.lower()
         
-        # ❌ केवल ग्रांड टोटल या टेयर वेट को छोड़ना है, 'SUB TOTAL' हमारी असली आइटम लाइन है!
-        if lower_line.startswith("total") or "tare weight" in lower_line or "freight terms" in lower_line:
+        # ❌ 'SUB TOTAL', 'Total' या 'Tare Weight' वाली किसी भी लाइन को पक्के तौर पर स्किप करें
+        if "sub total" in lower_line or "sub_total" in lower_line or lower_line.startswith("total") or "tare weight" in lower_line or "freight terms" in lower_line:
             continue
             
-        # ✅ पहचान: जिस लाइन में मात्रा, वैल्यू या वजन (डेसिमल नंबर) मौजूद हों और वह टेबल का हिस्सा हो
-        if "hs code" in lower_line or "hs code#" in lower_line or "sub total" in lower_line or re.search(r'\d+\.\d{3}', line_str):
+        # ✅ केवल मुख्य आइटम लाइन को पकड़ें (जिसमें HS Code या RITC कोड मौजूद हो)
+        hs_match = re.search(r'\b(\d{8,10})\b', line_str)
+        if hs_match or "hs code" in lower_line or "hs code#" in lower_line:
             
             parts = [p.strip() for p in line_str.split() if p.strip()]
             if not parts:
@@ -31,11 +32,10 @@ def extract_bkt_items(pdf_lines):
                 "line_text": line_str
             }
             
-            # 1. HS Code निकालना (किसी भी अंक से शुरू हो सकता है, जैसे 8 या 10 डिजिट का कोड)
-            hs_match = re.search(r'\b(\d{8,10})\b', line_str)
+            # 1. HS Code निकालना
             item_dict["hs_code"] = hs_match.group(1) if hs_match else ""
             
-            # 2. License No & Date निकालना (अगर मौजूद हो)
+            # 2. License No & Date निकालना (जैसे 0311048108 Dtd. 13.10.2025)
             lic_match = re.search(r'(\d{10})\s*(?:dtd\.?|date)?\s*([\d./-]+)', line_str, re.IGNORECASE)
             if lic_match:
                 item_dict["license_no"] = lic_match.group(1).strip()
