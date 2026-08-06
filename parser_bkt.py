@@ -2,9 +2,9 @@ import re
 
 def extract_bkt_items(pdf_lines):
     """
-    BKT Dedicated Item Table Parser Logic.
-    Extracts item rows from the summary table usually found on the last page of BKT invoices,
-    ignoring SUB TOTAL and Total rows, and ensuring Material Grp has valid text.
+    BKT Dedicated Item Table Parser Logic (Fixed & Perfect).
+    Extracts Quantity, Value, Gross Weight, Net Weight, and License details accurately 
+    by ignoring HS Code prefix numbers.
     """
     parsed_items = []
     
@@ -14,23 +14,22 @@ def extract_bkt_items(pdf_lines):
             continue
             
         lower_line = line_str.lower()
+        
         # 'sub total', 'total', 'tare weight' आदि पंक्तियों को पूरी तरह छोड़ दें
         if "sub total" in lower_line or lower_line.startswith("total") or "tare weight" in lower_line:
             continue
             
-        # BKT टेबल की लाइन आमतौर पर 'Tyres' या इसी तरह के मटेरियल ग्रुप से शुरू होती है
-        # साथ ही उसमें HS CODE और मात्रा/वजन मौजूद होना चाहिए
+        # BKT टेबल की लाइन में 'HS CODE' या उसका पैटर्न होना अनिवार्य है
         if "hs code" in lower_line or re.search(r'\b401[12]\d{4}\b', line_str):
             parts = [p.strip() for p in line_str.split() if p.strip()]
             
-            # यदि लाइन में 'SUB TOTAL' या 'Total' नहीं है और यह वैलिड आइटम रो है
             if "sub total" not in lower_line:
                 item_dict = {
                     "raw_parts": parts,
                     "line_text": line_str
                 }
                 
-                # 1. HS Code एक्सट्रैक्ट करना (जैसे 40117000 या HS CODE#3: 40117000)
+                # 1. HS Code सही से एक्सट्रैक्ट करना (जैसे 40117000)
                 hs_match = re.search(r'\b(401[12]\d{4})\b', line_str)
                 item_dict["hs_code"] = hs_match.group(1) if hs_match else ""
                 
@@ -43,9 +42,21 @@ def extract_bkt_items(pdf_lines):
                     item_dict["license_no"] = ""
                     item_dict["license_date"] = ""
                 
-                # 3. वजन और मात्रा (Numbers) निकालना
-                nums = re.findall(r'[\d,]+\.\d{3}|\b\d+\b', line_str)
-                item_dict["nums"] = nums
+                # 3. सटीक नंबर्स निकालना (Qty, Value, Gross Wt, Net Wt)
+                # यहाँ हम HS Code के साथ आने वाले '#3', '#4' जैसे नंबरों को इग्नोर कर रहे हैं
+                clean_line_for_nums = re.sub(r'HS\s*CODE#?\d*', '', line_str, flags=re.IGNORECASE)
+                
+                # दशमलव और पूर्ण संख्याएं ढूँढना जो टेबल के कॉलम की हैं
+                nums = re.findall(r'[\d,]+\.\d{2,3}|\b\d+\b', clean_line_for_nums)
+                
+                # यदि गलती से शिपर का नंबर आ गया हो तो उसे हटाकर सही सूची बनाना
+                filtered_nums = []
+                for n in nums:
+                    # यदि यह नंबर 8-अंकों का RITC कोड या लाइसेंस नंबर नहीं है, तभी इसे आइटम डेटा मानेंगे
+                    if n != item_dict["hs_code"] and len(n) < 10:
+                        filtered_nums.append(n)
+                        
+                item_dict["nums"] = filtered_nums
                 
                 # डिस्क्रिप्शन या मटेरियल ग्रुप सेट करना
                 item_dict["material_grp"] = "Tyres" if "tyres" in lower_line else parts[0] if parts else "Tyres"
