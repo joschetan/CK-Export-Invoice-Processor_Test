@@ -68,7 +68,8 @@ def render_processor():
                     rules = shipper_info.get("mapping_rules", {})
                     item_table_rules = shipper_info.get("item_table_rules", {})
                     
-                    active_parser_rule = shipper_info.get("item_table_rule_name", "Rule_Welspun")
+                    # 🚀 यहाँ सीधे यूजर द्वारा चुना गया शिपर नाम पास किया जा रहा है
+                    active_parser_rule = selected_shipper
                     
                     igst_cfg = shipper_info.get("igst_config", {})
                     lut_kws = igst_cfg.get("lut_keywords", "")
