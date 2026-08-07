@@ -72,7 +72,7 @@ def extract_welspun_items(pdf_lines, pdf_text=""):
 
 def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_overall_sr=1, start_excel_row=2, default_invoice_no="", default_invoice_date="", pdf_text="", lut_kws="", paid_kws="", parser_rule=""):
     """
-    Dynamic Excel mapping function for Welspun fixing BR, BS, S, and BW/BY mappings.
+    Dynamic Excel mapping function for Welspun with multi-line Consignee/Buyer address split handling.
     """
     curr_row = start_excel_row
     overall_sr = start_overall_sr
@@ -83,7 +83,7 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
     l_keywords = [k.strip().upper() for k in str(lut_kws).split(",") if k.strip()]
     p_keywords = [k.strip().upper() for k in str(paid_kws).split(",") if k.strip()]
     
-    matched_lut = any(kw.regex_replace if hasattr(kw, 'regex_replace') else kw.replace("NO.", "").replace(".", "").strip() in pdf_text_upper for kw in l_keywords if kw.strip())
+    matched_lut = any(kw.replace("NO.", "").replace(".", "").strip() in pdf_text_upper for kw in l_keywords if kw.strip())
     matched_paid = any(kw.replace(".", "").strip() in pdf_text_upper for kw in p_keywords if kw.strip())
 
     v_column_value = "LUT" if matched_lut else ("P" if matched_paid else "LUT")
@@ -103,7 +103,7 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
         
         nums = item.get("nums", [])
 
-        # 🚀 1. Handle Consignee / Buyer (Multi-line or single line extraction for BW, BY etc.)
+        # 🚀 1. Handle Consignee / Buyer Box / Extract fields (BW, BY etc. multi-line mapping)
         for field_name, r_info in item_rules.items():
             col_letter = r_info.get("col", "").strip().upper()
             rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
@@ -117,14 +117,17 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
                 if not extracted_val or not extracted_val.strip():
                     extracted_val = extract_header_value(pdf_lines, pdf_text, rule_val, "Below (नीचे)", "Contains", "", "None", field_label=field_name)
                 
-                # Agar multi-line address hai (jaise Consignee ya Buyer) toh rows ke hisab se split karke daalna
                 if extracted_val and "\n" in str(extracted_val):
-                    lines = str(extracted_val).split("\n")
-                    # Agar ye pehli row hai ya multi-row mapping hai
-                    target_row_num = curr_row + (item_idx if item_idx < len(lines) else 0)
-                    ws[f"{col_letter}{target_row_num}"] = lines[item_idx].strip() if item_idx < len(lines) else lines[-1].strip()
+                    lines = [l.strip() for l in str(extracted_val).split("\n") if l.strip()]
+                    if item_idx < len(lines):
+                        ws[f"{col_letter}{curr_row}"] = lines[item_idx]
+                    else:
+                        ws[f"{col_letter}{curr_row}"] = ""
                 else:
-                    ws[f"{col_letter}{curr_row}"] = extracted_val if extracted_val else ""
+                    if item_idx == 0:
+                        ws[f"{col_letter}{curr_row}"] = extracted_val if extracted_val else ""
+                    else:
+                        ws[f"{col_letter}{curr_row}"] = ""
 
         # 🚀 2. Commodity Sr (BR) & Name of Commodity (BS) mapping
         for field_name, r_info in item_rules.items():
@@ -148,7 +151,10 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
             rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
             rule_val = str(r_info.get("rule", "")).strip()
             
-            if not col_letter or col_letter in ["V", "I", "J", "G", "BR", "BS", "BW", "BY"]:
+            if not col_letter or col_letter in ["V", "I", "J", "G", "BR", "BS"]:
+                continue
+            
+            if "extract" in rule_type_raw.lower() or "box" in rule_type_raw.lower() or "header" in rule_type_raw.lower():
                 continue
                 
             cell_ref = f"{col_letter}{curr_row}"
