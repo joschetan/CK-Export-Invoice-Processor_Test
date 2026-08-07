@@ -64,7 +64,7 @@ def extract_welspun_items(pdf_lines, pdf_text=""):
 
 def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_overall_sr=1, start_excel_row=2, default_invoice_no="", default_invoice_date="", pdf_text="", lut_kws="", paid_kws="", parser_rule=""):
     """
-    Dynamic Excel mapping function for Welspun.
+    Dynamic Excel mapping function for Welspun with Invoice No, Date, and Commodity mapping.
     """
     curr_row = start_excel_row
     overall_sr = start_overall_sr
@@ -74,19 +74,8 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
     l_keywords = [k.strip().upper() for k in str(lut_kws).split(",") if k.strip()]
     p_keywords = [k.strip().upper() for k in str(paid_kws).split(",") if k.strip()]
     
-    matched_lut = False
-    for kw in l_keywords:
-        clean_kw = kw.replace("NO.", "").replace(".", "").strip()
-        if clean_kw and clean_kw in pdf_text_upper:
-            matched_lut = True
-            break
-            
-    matched_paid = False
-    for kw in p_keywords:
-        clean_kw = kw.replace(".", "").strip()
-        if clean_kw and clean_kw in pdf_text_upper:
-            matched_paid = True
-            break
+    matched_lut = any(kw.replace("NO.", "").replace(".", "").strip() in pdf_text_upper for kw in l_keywords if kw.strip())
+    matched_paid = any(kw.replace(".", "").strip() in pdf_text_upper for kw in p_keywords if kw.strip())
 
     v_column_value = "LUT" if matched_lut else ("P" if matched_paid else "LUT")
 
@@ -100,35 +89,48 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
         ws[f"H{curr_row}"] = item_sr_no                                      
         ws[f"V{curr_row}"] = v_column_value               
         
+        # 🚀 Invoice Number & Date Mapping (Columns I & J)
+        ws[f"I{curr_row}"] = default_invoice_no
+        ws[f"J{curr_row}"] = default_invoice_date
+        
         nums = item.get("nums", [])
 
-        if "commodity_sr" in item and "commodity_desc" in item:
-            for field_name, r_info in item_rules.items():
-                col_letter = r_info.get("col", "").strip().upper()
-                f_lower = field_name.lower()
-                if "commodity" in f_lower or "description" in f_lower:
-                    if col_letter: ws[f"{col_letter}{curr_row}"] = item["commodity_desc"]
-                elif "sr" in f_lower or field_name == "Sr.":
-                    if col_letter: ws[f"{col_letter}{curr_row}"] = item["commodity_sr"]
-
+        # 🚀 Commodity & Sr. Mapping based on UI rules (BR & BS)
         for field_name, r_info in item_rules.items():
             col_letter = r_info.get("col", "").strip().upper()
-            rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
-            rule_val = str(r_info.get("rule", "")).strip()
+            f_lower = field_name.lower()
+            rule_val_lower = str(r_info.get("rule", "")).lower()
             
             if not col_letter or col_letter == "V":
                 continue
                 
             cell_ref = f"{col_letter}{curr_row}"
             
+            if "commodity" in f_lower or "description" in f_lower or "commodity" in rule_val_lower:
+                if col_letter: 
+                    ws[cell_ref] = item.get("commodity_desc", item.get("description_text", ""))
+            elif "sr" in f_lower or f_lower == "sr." or rule_val_lower in ["(1)", "sr", "serial"]:
+                if col_letter: 
+                    ws[cell_ref] = item.get("commodity_sr", str(item_sr_no))
+
+        # Standard PDF Row Item Numeric & Other columns mapping
+        for field_name, r_info in item_rules.items():
+            col_letter = r_info.get("col", "").strip().upper()
+            rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
+            rule_val = str(r_info.get("rule", "")).strip()
+            
+            if not col_letter or col_letter in ["V", "I", "J", "G", "H"] or col_letter in [r.get("col","").upper() for f, r in item_rules.items() if "commodity" in f.lower() or "sr" in f.lower()]:
+                continue
+                
+            cell_ref = f"{col_letter}{curr_row}"
+            
             if "pdf" in rule_type_raw.lower():
                 r_val_lower = rule_val.lower().strip()
-                f_name_lower = field_name.lower().strip()
                 raw_val = ""
                 
                 if "hs" in r_val_lower or "hs code" in r_val_lower:
                     raw_val = item.get("hs_code", "")
-                elif "description" in r_val_lower or "description" in f_name_lower:
+                elif "description" in r_val_lower:
                     raw_val = item.get("description_text", "")
                 elif "dbk" in r_val_lower or col_letter == "S":
                     raw_val = item.get("dbk_found", "")
