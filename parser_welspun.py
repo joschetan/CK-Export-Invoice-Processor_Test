@@ -1,8 +1,10 @@
 import re
+import streamlit as st
+from pdf_engine import apply_value_replacement
 
 def extract_welspun_items(pdf_lines, pdf_text=""):
     """
-    Welspun Dedicated Item Table Parser Logic (Merged with Commodity & HS Code Extraction).
+    Welspun Dedicated Item Table Parser Logic (Merged with Commodity, HS Code & DBK 'B' Suffix).
     """
     parsed_items = []
     
@@ -37,7 +39,7 @@ def extract_welspun_items(pdf_lines, pdf_text=""):
                 dbk_match = re.search(r'\b\d{6}[A-Za-z]?\b|\b\d{10}[A-Za-z]?\b', line_str)
                 found_dbk = dbk_match.group(0) if dbk_match else ""
                 
-                # 🚀 Ensure 'B' is appended at the end of DBK code if found
+                # 🚀 DBK code ke aage 'B' suffix ensure karna (jaise 630201B)
                 if found_dbk:
                     if not found_dbk.upper().endswith("B"):
                         found_dbk = f"{found_dbk}B"
@@ -71,7 +73,7 @@ def extract_welspun_items(pdf_lines, pdf_text=""):
 
 def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_overall_sr=1, start_excel_row=2, default_invoice_no="", default_invoice_date="", pdf_text="", lut_kws="", paid_kws="", parser_rule=""):
     """
-    Dynamic Excel mapping function for Welspun with DBK 'B' suffix enforcement.
+    Dynamic Excel mapping function for Welspun incorporating smart rules, unit handling, and DBK 'B' suffix.
     """
     curr_row = start_excel_row
     overall_sr = start_overall_sr
@@ -101,7 +103,7 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
         
         nums = item.get("nums", [])
 
-        # Commodity, Sr. & Description mapping based on UI rules
+        # 1. Commodity, Sr. & Description mapping based on UI rules (BR & BS)
         for field_name, r_info in item_rules.items():
             col_letter = r_info.get("col", "").strip().upper()
             f_lower = field_name.lower()
@@ -122,41 +124,66 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
                 if col_letter:
                     ws[cell_ref] = item.get("description_text", "")
 
-        # Standard PDF Row Item Numeric & Other columns mapping
+        # 2. Standard PDF Row Item Numeric & Other columns mapping (including Smart rules & Unit detection)
         for field_name, r_info in item_rules.items():
             col_letter = r_info.get("col", "").strip().upper()
             rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
             rule_val = str(r_info.get("rule", "")).strip()
             
-            if not col_letter or col_letter in ["V", "I", "J", "G", "H"]:
+            if not col_letter or col_letter in ["V", "I", "J", "G"]:
                 continue
             
             skip_cols = [r.get("col","").upper() for f, r in item_rules.items() if "commodity" in f.lower() or "sr" in f.lower() or "description" in f.lower()]
-            if col_letter in skip_cols:
+            if col_letter in skip_cols and col_letter != "H":
                 continue
                 
             cell_ref = f"{col_letter}{curr_row}"
             
-            if "pdf" in rule_type_raw.lower():
+            if rule_type_raw.lower() == "constant text":
+                ws[cell_ref] = apply_value_replacement(rule_val, rule_val)
+            elif rule_type_raw.lower() == "excel cell reference":
+                if rule_val and len(rule_val) >= 2 and rule_val[1].isdigit():
+                    ws[cell_ref] = f"={rule_val}"
+                else:
+                    ws[cell_ref] = rule_val
+            elif "smart" in rule_type_raw.lower():
+                desc = item.get("description_text", "").upper()
+                if "PCS" in desc or "PC" in desc:
+                    ws[cell_ref] = "PCS"
+                else:
+                    ws[cell_ref] = rule_val if rule_val else "SET"
+            elif "pdf" in rule_type_raw.lower():
                 r_val_lower = rule_val.lower().strip()
+                f_name_lower = field_name.lower().strip()
                 raw_val = ""
                 
-                if "hs" in r_val_lower or "hs code" in r_val_lower:
+                if "igst %" in r_val_lower or "igst rate" in f_name_lower or ("igst" in f_name_lower and "%" in f_name_lower):
+                    raw_val = nums[5] if len(nums) > 5 else ""
+                elif "igst amt" in r_val_lower or "igst amount" in f_name_lower:
+                    raw_val = nums[6] if len(nums) > 6 else ""
+                elif "hs" in r_val_lower or "ritc" in f_name_lower or "hs code" in r_val_lower:
                     raw_val = item.get("hs_code", "")
-                elif "dbk" in r_val_lower or col_letter == "S":
-                    raw_val = item.get("dbk_found", "") # Already ends with 'B'
-                elif "weight" in r_val_lower:
+                elif "description" in r_val_lower or "description" in f_name_lower:
+                    raw_val = item.get("description_text", "")
+                elif "dbk" in r_val_lower or "drawback" in f_name_lower or col_letter == "S":
+                    raw_val = item.get("dbk_found", "") # Already has 'B' suffix
+                elif "weight" in r_val_lower or "net wt" in f_name_lower:
                     raw_val = nums[0] if len(nums) > 0 else ""
-                elif "qty" in r_val_lower:
+                elif "qty" in r_val_lower or "quantity" in f_name_lower:
                     raw_val = nums[1] if len(nums) > 1 else ""
                 elif "rate" in r_val_lower:
                     raw_val = nums[2] if len(nums) > 2 else ""
-                elif "amount" in r_val_lower:
+                elif "amount usd" in r_val_lower or "goods value" in f_name_lower or "amount" in r_val_lower:
                     raw_val = nums[3] if len(nums) > 3 else ""
+                elif "taxable" in r_val_lower:
+                    raw_val = nums[4] if len(nums) > 4 else ""
+
+                if "=" in rule_val:
+                    raw_val = apply_value_replacement(raw_val, rule_val)
 
                 try:
                     if col_letter == "S":
-                        ws[cell_ref] = raw_val # DBK should remain string (e.g. 630201B)
+                        ws[cell_ref] = raw_val # DBK string format e.g. 630201B
                     else:
                         ws[cell_ref] = float(str(raw_val).replace(",", ""))
                 except:
