@@ -4,7 +4,7 @@ import pdfplumber
 import re
 from io import BytesIO
 
-# 🚀 Sirf dedicated parsers import honge (item_parser ko hata diya gaya hai)
+# 🚀 Sirf dedicated parsers import honge
 from parser_welspun import extract_welspun_items, map_items_to_excel_dynamic
 from parser_bkt import extract_bkt_items
 
@@ -71,7 +71,8 @@ def render_processor():
                     rules = shipper_info.get("mapping_rules", {})
                     item_table_rules = shipper_info.get("item_table_rules", {})
                     
-                    active_parser_rule = selected_shipper.lower()
+                    # 🚀 सीधा गूगल शीट / डेटाबेस से असाइंड पार्सर रूल पढ़ें (कोई अनुमान नहीं)
+                    assigned_parser = shipper_info.get("item_table_rule_name", "parser_welspun").strip().lower()
                     
                     igst_cfg = shipper_info.get("igst_config", {})
                     lut_kws = igst_cfg.get("lut_keywords", "")
@@ -206,12 +207,13 @@ def render_processor():
                                 "rule": actual_rule_val
                             }
 
-                        # 🚀 Shipper ke hisab se sahi parser call hoga
-                        if "welspun" in active_parser_rule:
-                            parsed_items = extract_welspun_items(pdf_lines, pdf_text=pdf_text)
-                        elif "bkt" in active_parser_rule:
+                        # 🚀 शत-प्रतिशत सटीक पार्सर कॉलिंग (जो शिपर के लिए ड्रॉपडाउन से तय है, वही चलेगा)
+                        if assigned_parser == "parser_bkt":
                             parsed_items = extract_bkt_items(pdf_lines)
+                        elif assigned_parser == "parser_welspun":
+                            parsed_items = extract_welspun_items(pdf_lines, pdf_text=pdf_text)
                         else:
+                            # यदि कोई अन्य कस्टम पार्सर हो तो यहाँ सीधे जोड़ा जा सके
                             parsed_items = extract_welspun_items(pdf_lines, pdf_text=pdf_text)
                         
                         ws, overall_item_sr, excel_write_row = map_items_to_excel_dynamic(
@@ -224,7 +226,7 @@ def render_processor():
                             pdf_text=pdf_text,
                             lut_kws=lut_kws,
                             paid_kws=paid_kws,
-                            parser_rule=active_parser_rule
+                            parser_rule=assigned_parser
                         )
 
                     output = BytesIO()
