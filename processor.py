@@ -4,7 +4,11 @@ import pdfplumber
 import re
 from io import BytesIO
 
-from item_parser import extract_item_table_rows, map_items_to_excel_dynamic
+# 🚀 item_parser को हटाकर dedicated parsers को इम्पोर्ट किया गया है
+from parser_welspun import extract_welspun_items
+from parser_bkt import extract_bkt_items
+from item_parser import map_items_to_excel_dynamic # (नोट: map function को supporting file या supporting_engine में रखा जा सकता है, फिलहाल इसे dynamic mapping के लिए इस्तेमाल कर रहे हैं)
+
 from shipper_data import fetch_data_from_google_sheet, ensure_default_shipper
 from pdf_engine import apply_rule_filter, extract_header_value
 from google_sheet_sync import load_template_from_sheet
@@ -68,8 +72,7 @@ def render_processor():
                     rules = shipper_info.get("mapping_rules", {})
                     item_table_rules = shipper_info.get("item_table_rules", {})
                     
-                    # 🚀 यहाँ सीधे यूजर द्वारा चुना गया शिपर नाम पास किया जा रहा है
-                    active_parser_rule = selected_shipper
+                    active_parser_rule = selected_shipper.lower()
                     
                     igst_cfg = shipper_info.get("igst_config", {})
                     lut_kws = igst_cfg.get("lut_keywords", "")
@@ -142,7 +145,6 @@ def render_processor():
                                     
                             inv_data_dict[field.lower()] = found_val
                             
-                            # 🚀 MULTI-LINE DYNAMIC ROW EXPANSION LOGIC FOR EXCEL
                             if target_cell and "dynamic" not in target_cell.lower():
                                 try:
                                     if "\n" in str(found_val):
@@ -200,7 +202,14 @@ def render_processor():
                                 "rule": actual_rule_val
                             }
 
-                        parsed_items = extract_item_table_rows(pdf_lines, parser_rule=active_parser_rule)
+                        # 🚀 यहाँ तय किया जा रहा है कि शिपर के आधार पर कौन सा Parser चलना चाहिए (Welspun या BKT)
+                        if "welspun" in active_parser_rule:
+                            parsed_items = extract_welspun_items(pdf_lines)
+                        elif "bkt" in active_parser_rule:
+                            parsed_items = extract_bkt_items(pdf_lines)
+                        else:
+                            # यदि कोई नया या दूसरा शिपर है, तो डिफ़ॉल्ट रूप से welspun या उपयुक्त लॉजिक सेट किया जा सकता है
+                            parsed_items = extract_welspun_items(pdf_lines)
                         
                         ws, overall_item_sr, excel_write_row = map_items_to_excel_dynamic(
                             ws, parsed_items, resolved_item_rules,
