@@ -142,13 +142,24 @@ def add_item_col_dialog(selected_shipper):
     c_type = st.selectbox("Rule Type:", ["PDF Row Item", "Table Row Item", "Constant Text", "Excel Cell Reference", "Smart Detection", "Header Field Mapping"])
     c_rule = st.text_input("Rule Detail / Value (उदा: B19, SET, PCS, Numbers Only):")
     
+    doc_source_item = st.selectbox(
+        "यह आइटम डेटा किस डॉक्यूमेंट से लिया जाएगा?",
+        ["Main Invoice", "GST Invoice (PDF/Excel)", "DEEC Declaration (PDF/Excel)"],
+        key="add_item_doc_source"
+    )
+    
     if st.button("Confirm & Add Item Column", type="primary"):
         if not c_name or not c_col:
             st.error("Heading Name और Column Letter अनिवार्य हैं!")
         else:
             item_rules = st.session_state["shipper_database"][selected_shipper].setdefault("item_table_rules", {})
-            item_rules[c_name] = {"col": c_col, "type": c_type, "rule": c_rule}
-            st.success(f"🎉 कॉलम '{c_name}' जुड़ गया!")
+            item_rules[c_name] = {
+                "col": c_col, 
+                "type": c_type, 
+                "rule": c_rule,
+                "logic": doc_source_item
+            }
+            st.success(f"🎉 कॉलम '{c_name}' ({doc_source_item}) जुड़ गया!")
             st.rerun()
 
 def render_shipper_data():
@@ -239,7 +250,6 @@ def render_shipper_data():
             pdf_lines = []
             pdf_text = ""
             if test_pdf:
-                # 🟢 बॉक्स इंजन के लिए PDF Bytes को सेव कर रहे हैं
                 st.session_state["cached_pdf_bytes"] = test_pdf.getvalue()
                 
                 with pdfplumber.open(test_pdf) as pdf:
@@ -302,7 +312,6 @@ def render_shipper_data():
             current_rules = shipper_info.get("mapping_rules", {})
             updated_rules = {}
             
-            # 📦 केवल एक साफ़-सुथरा '📦 Extract Inside Box' विकल्प पोजीशन में जोड़ दिया गया है
             pos_options = [
                 "Right (आगे)", 
                 "Below (नीचे)", 
@@ -326,17 +335,20 @@ def render_shipper_data():
                 "Remove All Spaces"
             ]
             
-            c1, c2, c3, c4, c5, c6, c7, c8, c9, c10 = st.columns([1.8, 2.2, 1.3, 0.7, 1.5, 1.3, 1.5, 1.5, 0.7, 1.0])
+            doc_source_options = ["Main Invoice", "GST Invoice (PDF/Excel)", "DEEC Declaration (PDF/Excel)"]
+            
+            c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11 = st.columns([1.6, 2.0, 1.2, 0.6, 1.3, 1.1, 1.3, 1.3, 1.5, 0.6, 0.9])
             with c1: st.markdown("**Field Name**")
             with c2: st.markdown("**Keyword**")
             with c3: st.markdown("**Position**")
             with c4: st.markdown("**Cell**")
             with c5: st.markdown("**Match Mode**")
             with c6: st.markdown("**Stop / Word**")
-            with c7: st.markdown("**Filter/Logic**")
-            with c8: st.markdown("**Fallback Value**")
-            with c9: st.markdown("**Del**")
-            with c10: st.markdown("**⚡ Test**")
+            with c7: st.markdown("**Filter**")
+            with c8: st.markdown("**Source Doc**")  # 👈 साफ़-साफ़ दिखने के लिए कॉलम हेडिंग
+            with c9: st.markdown("**Fallback**")
+            with c10: st.markdown("**Del**")
+            with c11: st.markdown("**⚡ Test**")
             st.write("---")
             
             curr_pdf_lines = st.session_state.get("cached_pdf_lines", [])
@@ -347,7 +359,7 @@ def render_shipper_data():
                     continue
 
                 s_val = current_rules[field]
-                c1, c2, c3, c4, c5, c6, c7, c8, c9, c10 = st.columns([1.8, 2.2, 1.3, 0.7, 1.5, 1.3, 1.5, 1.5, 0.7, 1.0])
+                c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11 = st.columns([1.6, 2.0, 1.2, 0.6, 1.3, 1.1, 1.3, 1.3, 1.5, 0.6, 0.9])
                 
                 saved_pos = s_val.get("position", "Right (आगे)")
                 pos_idx = pos_options.index(saved_pos) if saved_pos in pos_options else 0
@@ -358,9 +370,10 @@ def render_shipper_data():
                 saved_flt = s_val.get("filter", "None")
                 if saved_flt in ["Inside Parentheses ()", "Text Inside ()"]:
                     saved_flt = "Text Inside Parentheses ()"
-                
                 flt_idx = filter_options.index(saved_flt) if saved_flt in filter_options else 0
-                saved_logic = "Main Invoice"
+                
+                saved_logic = s_val.get("logic", "Main Invoice")
+                logic_idx = doc_source_options.index(saved_logic) if saved_logic in doc_source_options else 0
 
                 with c1: edited_name = st.text_input(f"f_{field}", value=field, label_visibility="collapsed")
                 with c2: ky = st.text_input(f"k_{field}", value=s_val.get("keyword", ""), label_visibility="collapsed")
@@ -369,17 +382,17 @@ def render_shipper_data():
                 with c5: m_mode = st.selectbox(f"mm_{field}", mode_options, index=mode_idx, label_visibility="collapsed")
                 with c6: stop_kw = st.text_input(f"sk_{field}", value=s_val.get("stop_kw", ""), label_visibility="collapsed")
                 with c7: final_flt = st.selectbox(f"flt_{field}", filter_options, index=flt_idx, label_visibility="collapsed")
-                with c8: fb_val = st.text_input(f"fb_{field}", value=s_val.get("fallback", ""), label_visibility="collapsed", placeholder="अगर ब्लैंक हो")
-                with c9:
+                with c8: final_logic = st.selectbox(f"logic_{field}", doc_source_options, index=logic_idx, label_visibility="collapsed") # 👈 ड्रॉपdown UI में जुड़ा
+                with c9: fb_val = st.text_input(f"fb_{field}", value=s_val.get("fallback", ""), label_visibility="collapsed", placeholder="अगर ब्लैंक हो")
+                with c10:
                     if st.button("🗑️", key=f"del_h_{field}"):
                         del st.session_state["shipper_database"][selected_shipper]["mapping_rules"][field]
                         st.rerun()
-                with c10:
+                with c11:
                     if st.button("⚡ Test", key=f"test_btn_{field}"):
                         if not curr_pdf_lines:
                             st.toast("⚠️ पहले Section 2 में PDF अपलोड करें!")
                         else:
-                            # 🟢 pdf_bytes भेज रहे हैं ताकि बॉक्स बाउंड्री इंजन काम कर सके
                             pdf_bytes = st.session_state.get("cached_pdf_bytes", None)
                             res_val = extract_header_value(
                                 curr_pdf_lines, curr_pdf_text, ky, pos, m_mode, 
@@ -391,11 +404,11 @@ def render_shipper_data():
                             
                             rule_summary = {
                                 "keyword": ky, "position": pos, "cell": cl,
-                                "match_mode": m_mode, "stop_kw": stop_kw, "filter": final_flt, "logic": saved_logic
+                                "match_mode": m_mode, "stop_kw": stop_kw, "filter": final_flt, "logic": final_logic
                             }
                             show_field_test_dialog(edited_name, rule_summary, res_val if res_val else "❌ (Not Found)")
                 
-                updated_rules[edited_name] = {"keyword": ky, "position": pos, "cell": cl, "match_mode": m_mode, "stop_kw": stop_kw, "filter": final_flt, "logic": saved_logic, "fallback": fb_val}
+                updated_rules[edited_name] = {"keyword": ky, "position": pos, "cell": cl, "match_mode": m_mode, "stop_kw": stop_kw, "filter": final_flt, "logic": final_logic, "fallback": fb_val}
                 
             shipper_info["mapping_rules"] = updated_rules
 
@@ -438,12 +451,13 @@ def render_shipper_data():
             item_rules = shipper_info.get("item_table_rules", {})
             updated_item_rules = {}
             
-            ic1, ic2, ic3, ic4, ic5 = st.columns([3, 2, 3, 3, 1])
+            ic1, ic2, ic3, ic4, ic5, ic6 = st.columns([2.5, 1.5, 2.5, 2.5, 2.0, 0.8])
             with ic1: st.markdown("**Item Field Name**")
-            with ic2: st.markdown("**Excel Column**")
+            with ic2: st.markdown("**Excel Col**")
             with ic3: st.markdown("**Rule Type**")
-            with ic4: st.markdown("**Rule Detail / Value**")
-            with ic5: st.markdown("**Del**")
+            with ic4: st.markdown("**Rule Detail**")
+            with ic5: st.markdown("**Source Doc**")     # 👈 आइटम टेबल के लिए भी सोर्स डॉक्यूपेंट कॉलम
+            with ic6: st.markdown("**Del**")
             st.write("---")
             
             rule_type_options = ["PDF Row Item", "Table Row Item", "Constant Text", "Excel Cell Reference", "Smart Detection", "Header Field Mapping"]
@@ -454,10 +468,13 @@ def render_shipper_data():
                     continue
 
                 ir = item_rules[item_field]
-                ic1, ic2, ic3, ic4, ic5 = st.columns([3, 2, 3, 3, 1])
+                ic1, ic2, ic3, ic4, ic5, ic6 = st.columns([2.5, 1.5, 2.5, 2.5, 2.0, 0.8])
                 
                 saved_type = ir.get("type", "PDF Row Item")
                 type_idx = rule_type_options.index(saved_type) if saved_type in rule_type_options else 0
+                
+                saved_item_logic = ir.get("logic", "Main Invoice")
+                item_logic_idx = doc_source_options.index(saved_item_logic) if saved_item_logic in doc_source_options else 0
                 
                 with ic1: e_ifield = st.text_input(f"if_{item_field}", value=item_field, label_visibility="collapsed")
                 with ic2: e_icol = st.text_input(f"ic_{item_field}", value=ir.get("col", "K"), label_visibility="collapsed").upper()
@@ -470,13 +487,20 @@ def render_shipper_data():
                         e_irule = st.selectbox(f"ir_{item_field}", available_header_fields if available_header_fields else ["No Headers Found"], index=h_idx if available_header_fields else 0, label_visibility="collapsed")
                     else:
                         e_irule = st.text_input(f"ir_{item_field}", value=ir.get("rule", ""), label_visibility="collapsed")
-                        
-                with ic5:
+                
+                with ic5: e_ilogic = st.selectbox(f"ilogic_{item_field}", doc_source_options, index=item_logic_idx, label_visibility="collapsed") # 👈 आइटम टेबल के लिए ड्रॉपडाउन
+                
+                with ic6:
                     if st.button("🗑️", key=f"idel_{item_field}"):
                         del item_rules[item_field]
                         st.rerun()
                         
-                updated_item_rules[e_ifield] = {"col": e_icol, "type": e_itype, "rule": e_irule}
+                updated_item_rules[e_ifield] = {
+                    "col": e_icol, 
+                    "type": e_itype, 
+                    "rule": e_irule,
+                    "logic": e_ilogic
+                }
                 
             shipper_info["item_table_rules"] = updated_item_rules
             st.write("---")
