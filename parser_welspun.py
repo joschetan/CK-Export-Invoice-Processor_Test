@@ -35,7 +35,13 @@ def extract_welspun_items(pdf_lines, pdf_text=""):
                 item_dict["nums"] = nums
                 
                 dbk_match = re.search(r'\b\d{6}[A-Za-z]?\b|\b\d{10}[A-Za-z]?\b', line_str)
-                item_dict["dbk_found"] = dbk_match.group(0) if dbk_match else ""
+                found_dbk = dbk_match.group(0) if dbk_match else ""
+                
+                # 🚀 Ensure 'B' is appended at the end of DBK code if found
+                if found_dbk:
+                    if not found_dbk.upper().endswith("B"):
+                        found_dbk = f"{found_dbk}B"
+                item_dict["dbk_found"] = found_dbk
 
                 if len(nums) > 0:
                     first_num = nums[0]
@@ -43,16 +49,17 @@ def extract_welspun_items(pdf_lines, pdf_text=""):
                     end_pos = line_str.find(first_num)
                     if end_pos > start_pos:
                         desc_text = line_str[start_pos:end_pos].strip()
-                        if item_dict["dbk_found"]:
-                            desc_text = desc_text.replace(item_dict["dbk_found"], "").strip()
+                        if dbk_match and dbk_match.group(0) in desc_text:
+                            desc_text = desc_text.replace(dbk_match.group(0), "").strip()
                         item_dict["description_text"] = desc_text
                 else:
                     item_dict["description_text"] = " ".join(parts[1:]) if len(parts) > 1 else ""
                 
                 item_idx = len(parsed_items)
-                if extracted_commodities and item_idx < len(extracted_commodities):
-                    item_dict["commodity_sr"] = extracted_commodities[item_idx]["sr"]
-                    item_dict["commodity_desc"] = extracted_commodities[item_idx]["desc"]
+                if extracted_commodities:
+                    comm_target = extracted_commodities[item_idx] if item_idx < len(extracted_commodities) else extracted_commodities[-1]
+                    item_dict["commodity_sr"] = comm_target["sr"]
+                    item_dict["commodity_desc"] = comm_target["desc"]
                 else:
                     item_dict["commodity_sr"] = ""
                     item_dict["commodity_desc"] = ""
@@ -64,7 +71,7 @@ def extract_welspun_items(pdf_lines, pdf_text=""):
 
 def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_overall_sr=1, start_excel_row=2, default_invoice_no="", default_invoice_date="", pdf_text="", lut_kws="", paid_kws="", parser_rule=""):
     """
-    Dynamic Excel mapping function for Welspun with strict row-wise mapping.
+    Dynamic Excel mapping function for Welspun with DBK 'B' suffix enforcement.
     """
     curr_row = start_excel_row
     overall_sr = start_overall_sr
@@ -107,12 +114,10 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
             
             if "commodity" in f_lower or "commodity" in rule_val_lower:
                 if col_letter:
-                    comm_desc = item.get("commodity_desc", "")
-                    ws[cell_ref] = comm_desc if comm_desc else ""
+                    ws[cell_ref] = item.get("commodity_desc", "")
             elif "sr" in f_lower or f_lower == "sr." or rule_val_lower in ["(1)", "sr", "serial"]:
                 if col_letter:
-                    comm_sr = item.get("commodity_sr", "")
-                    ws[cell_ref] = comm_sr if comm_sr else ""
+                    ws[cell_ref] = item.get("commodity_sr", "")
             elif "description" in f_lower or "description" in rule_val_lower:
                 if col_letter:
                     ws[cell_ref] = item.get("description_text", "")
@@ -139,9 +144,7 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
                 if "hs" in r_val_lower or "hs code" in r_val_lower:
                     raw_val = item.get("hs_code", "")
                 elif "dbk" in r_val_lower or col_letter == "S":
-                    raw_val = item.get("dbk_found", "")
-                    if raw_val and not str(raw_val).upper().endswith("B"):
-                        raw_val = f"{raw_val}B"
+                    raw_val = item.get("dbk_found", "") # Already ends with 'B'
                 elif "weight" in r_val_lower:
                     raw_val = nums[0] if len(nums) > 0 else ""
                 elif "qty" in r_val_lower:
@@ -152,7 +155,10 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
                     raw_val = nums[3] if len(nums) > 3 else ""
 
                 try:
-                    ws[cell_ref] = float(str(raw_val).replace(",", ""))
+                    if col_letter == "S":
+                        ws[cell_ref] = raw_val # DBK should remain string (e.g. 630201B)
+                    else:
+                        ws[cell_ref] = float(str(raw_val).replace(",", ""))
                 except:
                     ws[cell_ref] = raw_val
                     
