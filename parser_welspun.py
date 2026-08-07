@@ -112,14 +112,15 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
             if not col_letter or col_letter in ["V", "BR", "BS", "S"]:
                 continue
                 
-            if "extract" in rule_type_raw.lower() or "box" in rule_type_raw.lower() or "header" in rule_type_raw.lower():
-                # यहाँ '📦 Extract Inside Box (डब्बे के अंदर का टेक्स्ट)' पोजीशन पास कर दी गई है
+            if "extract" in rule_type_raw.lower() or "box" in rule_type_raw.lower() or "header" in rule_type_raw.lower() or col_letter in ["BW", "BY"]:
+                cached_bytes = st.session_state.get("cached_pdf_bytes", None)
+                
                 extracted_val = extract_header_value(
                     pdf_lines, pdf_text, rule_val, 
                     "📦 Extract Inside Box (डब्बे के अंदर का टेक्स्ट)", 
                     "Exact Word", "", "None", 
                     field_label=field_name, 
-                    pdf_bytes=st.session_state.get("cached_pdf_bytes", None)
+                    pdf_bytes=cached_bytes
                 )
                 
                 if not extracted_val or not extracted_val.strip():
