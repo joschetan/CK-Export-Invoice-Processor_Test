@@ -21,6 +21,7 @@ def ensure_default_shipper():
             "uploaded_files": {},
             "mapping_rules": {},
             "item_table_rules": {},
+            "item_table_rule_name": "parser_welspun",
             "igst_config": {"lut_keywords": "", "paid_keywords": ""}
         }
 
@@ -50,6 +51,7 @@ def fetch_data_from_google_sheet(show_toast=False):
                     "uploaded_files": {},
                     "mapping_rules": {},
                     "item_table_rules": {},
+                    "item_table_rule_name": "parser_welspun",
                     "igst_config": {"lut_keywords": "", "paid_keywords": ""}
                 }
             
@@ -58,7 +60,7 @@ def fetch_data_from_google_sheet(show_toast=False):
             if isinstance(s_data, dict):
                 shipper_info["mapping_rules"] = s_data.get("mapping_rules", {})
                 shipper_info["item_table_rules"] = s_data.get("item_table_rules", {})
-                shipper_info["item_table_rule_name"] = s_data.get("item_table_rule_name", "Rule_Welspun")
+                shipper_info["item_table_rule_name"] = s_data.get("item_table_rule_name", "parser_welspun")
                 shipper_info["igst_config"] = s_data.get("igst_config", {"lut_keywords": "", "paid_keywords": ""})
 
             t_bytes = load_template_bytes_from_sheet(s_name)
@@ -172,6 +174,11 @@ def render_shipper_data():
     
     with st.expander("➕ Add New Shipper (नया शिपर जोड़ें)", expanded=False):
         new_shipper_name = st.text_input("नया शिपर कंपनी का नाम दर्ज करें:", key="input_new_shipper_name")
+        
+        # 🚀 अनिवार्य पार्सर सिलेक्शन ड्रॉपडाउन (अब नया शिपर बिना पार्सर के नहीं बन सकता)
+        available_parsers = ["parser_welspun", "parser_bkt"]
+        selected_parser_rule = st.selectbox("इस शिपर के लिए पार्सर रूल (Parser File) चुनें:", available_parsers, key="input_new_shipper_parser")
+        
         if st.button("Create New Shipper Profile", type="primary", key="btn_create_shipper"):
             if not new_shipper_name.strip():
                 st.error("शिपर का नाम खाली नहीं हो सकता!")
@@ -183,9 +190,10 @@ def render_shipper_data():
                         "uploaded_files": {},
                         "mapping_rules": {},
                         "item_table_rules": {},
+                        "item_table_rule_name": selected_parser_rule,
                         "igst_config": {"lut_keywords": "", "paid_keywords": ""}
                     }
-                    st.success(f"🎉 नया शिपर '{s_clean}' सफलतापूर्वक जुड़ गया है! अब नीचे ड्रॉपडाउन से इसे चुनकर कॉन्फ़िगर करें.")
+                    st.success(f"🎉 नया शिपर '{s_clean}' और पार्सर '{selected_parser_rule}' सफलतापूर्वक जुड़ गया है! अब नीचे से कॉन्फ़िगर करें.")
                     st.rerun()
                 else:
                     st.warning("⚠️ यह शिपर पहले से मौजूद है!")
@@ -199,6 +207,15 @@ def render_shipper_data():
             st.write(f"### ⚙️ प्रोफाइल सेटअप और रूल्स: **{selected_shipper}**")
             shipper_info = st.session_state["shipper_database"][selected_shipper]
             
+            # 🚀 मौजूदा शिपर के लिए भी पार्सर बदलने का ऑप्शन (Edit Mode)
+            current_assigned_parser = shipper_info.get("item_table_rule_name", "parser_welspun")
+            available_parsers = ["parser_welspun", "parser_bkt"]
+            p_idx = available_parsers.index(current_assigned_parser) if current_assigned_parser in available_parsers else 0
+            
+            updated_parser_choice = st.selectbox("📌 इस शिपर के लिए एक्टिव पार्सर रूल (Parser File):", available_parsers, index=p_idx, key=f"sel_parser_{selected_shipper}")
+            shipper_info["item_table_rule_name"] = updated_parser_choice
+
+            st.write("---")
             st.subheader("📁 1. टेम्पलेट फ़ाइल अपलोड (अलग बटन)")
             
             has_file = "Full Job Excel Format File" in shipper_info.get("uploaded_files", {}) and len(shipper_info["uploaded_files"]["Full Job Excel Format File"]) > 0
@@ -345,7 +362,7 @@ def render_shipper_data():
             with c5: st.markdown("**Match Mode**")
             with c6: st.markdown("**Stop / Word**")
             with c7: st.markdown("**Filter**")
-            with c8: st.markdown("**Source Doc**")  # 👈 साफ़-साफ़ दिखने के लिए कॉलम हेडिंग
+            with c8: st.markdown("**Source Doc**")  
             with c9: st.markdown("**Fallback**")
             with c10: st.markdown("**Del**")
             with c11: st.markdown("**⚡ Test**")
@@ -382,7 +399,7 @@ def render_shipper_data():
                 with c5: m_mode = st.selectbox(f"mm_{field}", mode_options, index=mode_idx, label_visibility="collapsed")
                 with c6: stop_kw = st.text_input(f"sk_{field}", value=s_val.get("stop_kw", ""), label_visibility="collapsed")
                 with c7: final_flt = st.selectbox(f"flt_{field}", filter_options, index=flt_idx, label_visibility="collapsed")
-                with c8: final_logic = st.selectbox(f"logic_{field}", doc_source_options, index=logic_idx, label_visibility="collapsed") # 👈 ड्रॉपdown UI में जुड़ा
+                with c8: final_logic = st.selectbox(f"logic_{field}", doc_source_options, index=logic_idx, label_visibility="collapsed") 
                 with c9: fb_val = st.text_input(f"fb_{field}", value=s_val.get("fallback", ""), label_visibility="collapsed", placeholder="अगर ब्लैंक हो")
                 with c10:
                     if st.button("🗑️", key=f"del_h_{field}"):
@@ -456,7 +473,7 @@ def render_shipper_data():
             with ic2: st.markdown("**Excel Col**")
             with ic3: st.markdown("**Rule Type**")
             with ic4: st.markdown("**Rule Detail**")
-            with ic5: st.markdown("**Source Doc**")     # 👈 आइटम टेबल के लिए भी सोर्स डॉक्यूपेंट कॉलम
+            with ic5: st.markdown("**Source Doc**")     
             with ic6: st.markdown("**Del**")
             st.write("---")
             
@@ -488,7 +505,7 @@ def render_shipper_data():
                     else:
                         e_irule = st.text_input(f"ir_{item_field}", value=ir.get("rule", ""), label_visibility="collapsed")
                 
-                with ic5: e_ilogic = st.selectbox(f"ilogic_{item_field}", doc_source_options, index=item_logic_idx, label_visibility="collapsed") # 👈 आइटम टेबल के लिए ड्रॉपडाउन
+                with ic5: e_ilogic = st.selectbox(f"ilogic_{item_field}", doc_source_options, index=item_logic_idx, label_visibility="collapsed") 
                 
                 with ic6:
                     if st.button("🗑️", key=f"idel_{item_field}"):
@@ -511,7 +528,7 @@ def render_shipper_data():
                     shippers_payload[s_name] = {
                         "mapping_rules": s_data.get("mapping_rules", {}),
                         "item_table_rules": s_data.get("item_table_rules", {}),
-                        "item_table_rule_name": s_data.get("item_table_rule_name", "Rule_Welspun"),
+                        "item_table_rule_name": s_data.get("item_table_rule_name", "parser_welspun"),
                         "igst_config": s_data.get("igst_config", {})
                     }
                 
