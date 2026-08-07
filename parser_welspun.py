@@ -54,8 +54,8 @@ def extract_welspun_items(pdf_lines, pdf_text=""):
                     item_dict["commodity_sr"] = extracted_commodities[item_idx]["sr"]
                     item_dict["commodity_desc"] = extracted_commodities[item_idx]["desc"]
                 else:
-                    item_dict["commodity_sr"] = str(item_idx + 1)
-                    item_dict["commodity_desc"] = item_dict.get("description_text", "")
+                    item_dict["commodity_sr"] = ""
+                    item_dict["commodity_desc"] = ""
                         
                 parsed_items.append(item_dict)
                 
@@ -64,7 +64,7 @@ def extract_welspun_items(pdf_lines, pdf_text=""):
 
 def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_overall_sr=1, start_excel_row=2, default_invoice_no="", default_invoice_date="", pdf_text="", lut_kws="", paid_kws="", parser_rule=""):
     """
-    Dynamic Excel mapping function for Welspun with Invoice No, Date, and Commodity mapping.
+    Dynamic Excel mapping function for Welspun with strict row-wise mapping.
     """
     curr_row = start_excel_row
     overall_sr = start_overall_sr
@@ -89,13 +89,12 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
         ws[f"H{curr_row}"] = item_sr_no                                      
         ws[f"V{curr_row}"] = v_column_value               
         
-        # 🚀 Invoice Number & Date Mapping (Columns I & J)
         ws[f"I{curr_row}"] = default_invoice_no
         ws[f"J{curr_row}"] = default_invoice_date
         
         nums = item.get("nums", [])
 
-        # 🚀 Commodity & Sr. Mapping based on UI rules (BR & BS)
+        # Commodity, Sr. & Description mapping based on UI rules
         for field_name, r_info in item_rules.items():
             col_letter = r_info.get("col", "").strip().upper()
             f_lower = field_name.lower()
@@ -106,12 +105,17 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
                 
             cell_ref = f"{col_letter}{curr_row}"
             
-            if "commodity" in f_lower or "description" in f_lower or "commodity" in rule_val_lower:
-                if col_letter: 
-                    ws[cell_ref] = item.get("commodity_desc", item.get("description_text", ""))
+            if "commodity" in f_lower or "commodity" in rule_val_lower:
+                if col_letter:
+                    comm_desc = item.get("commodity_desc", "")
+                    ws[cell_ref] = comm_desc if comm_desc else ""
             elif "sr" in f_lower or f_lower == "sr." or rule_val_lower in ["(1)", "sr", "serial"]:
-                if col_letter: 
-                    ws[cell_ref] = item.get("commodity_sr", str(item_sr_no))
+                if col_letter:
+                    comm_sr = item.get("commodity_sr", "")
+                    ws[cell_ref] = comm_sr if comm_sr else ""
+            elif "description" in f_lower or "description" in rule_val_lower:
+                if col_letter:
+                    ws[cell_ref] = item.get("description_text", "")
 
         # Standard PDF Row Item Numeric & Other columns mapping
         for field_name, r_info in item_rules.items():
@@ -119,7 +123,11 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
             rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
             rule_val = str(r_info.get("rule", "")).strip()
             
-            if not col_letter or col_letter in ["V", "I", "J", "G", "H"] or col_letter in [r.get("col","").upper() for f, r in item_rules.items() if "commodity" in f.lower() or "sr" in f.lower()]:
+            if not col_letter or col_letter in ["V", "I", "J", "G", "H"]:
+                continue
+            
+            skip_cols = [r.get("col","").upper() for f, r in item_rules.items() if "commodity" in f.lower() or "sr" in f.lower() or "description" in f.lower()]
+            if col_letter in skip_cols:
                 continue
                 
             cell_ref = f"{col_letter}{curr_row}"
@@ -130,8 +138,6 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
                 
                 if "hs" in r_val_lower or "hs code" in r_val_lower:
                     raw_val = item.get("hs_code", "")
-                elif "description" in r_val_lower:
-                    raw_val = item.get("description_text", "")
                 elif "dbk" in r_val_lower or col_letter == "S":
                     raw_val = item.get("dbk_found", "")
                     if raw_val and not str(raw_val).upper().endswith("B"):
