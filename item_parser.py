@@ -5,11 +5,13 @@ from parser_welspun import extract_welspun_items
 from parser_bkt import extract_bkt_items
 
 def extract_item_table_rows(pdf_lines, parser_rule="Rule_Welspun"):
-    rule_name = str(parser_rule).strip()
+    rule_name = str(parser_rule).strip().lower()
     
-    # सीधे आपके गूगल शीट वाले नाम से मैच करेगा
-    if rule_name == "BALKRISHNA INDUSTRIES LIMITED" or "bkt" in rule_name.lower():
+    # 🟢 1. यदि शिपर के नाम में 'balkrishna' है, तो Balkrishna Industries Limited (BKT) का पार्सर चलेगा
+    if "balkrishna" in rule_name:
         return extract_bkt_items(pdf_lines)
+    
+    # 🟢 2. बाकी सभी (जैसे Welspun या कोई नया शिपर) डिफ़ॉल्ट रूप से Welspun वाले वर्किंग पार्सर पर चलेंगे
     else:
         return extract_welspun_items(pdf_lines)
 
@@ -29,6 +31,7 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
     overall_sr = start_overall_sr
     
     pdf_text_upper = str(pdf_text).upper()
+    rule_name_lower = str(parser_rule).strip().lower()
     
     l_keywords = [k.strip().upper() for k in str(lut_kws).split(",") if k.strip()]
     p_keywords = [k.strip().upper() for k in str(paid_kws).split(",") if k.strip()]
@@ -73,7 +76,6 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
         ws[f"H{curr_row}"] = item_sr_no                                      
         ws[f"V{curr_row}"] = v_column_value               
         
-        # BKT पार्सर से सीधे आने वाले नाम (quantity, value, gross_wt, net_wt, license_no) का उपयोग
         for field_name, r_info in item_rules.items():
             col_letter = r_info.get("col", "").strip().upper()
             rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
@@ -94,26 +96,53 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
                 else:
                     raw_val = rule_val
             else:
-                # सीधे डिक्शनरी की Keys से डेटा उठाना
-                if "quantity" in rule_val or "qty" in rule_val:
-                    raw_val = item.get("quantity", "")
-                elif "value" in rule_val:
-                    raw_val = item.get("value", "")
-                elif "gross" in rule_val:
-                    raw_val = item.get("gross_wt", "")
-                elif "net" in rule_val:
-                    raw_val = item.get("net_wt", "")
-                elif "hs" in rule_val or "ritc" in rule_val:
-                    raw_val = item.get("hs_code", "")
-                elif "license_no" in rule_val or "license no" in rule_val:
-                    raw_val = item.get("license_no", "")
-                elif "license_date" in rule_val:
-                    raw_val = item.get("license_date", "")
+                # 🟢 1. BALKRISHNA INDUSTRIES LIMITED के लिए स्पेसिफिक कीज़
+                if "balkrishna" in rule_name_lower:
+                    if "quantity" in rule_val or "qty" in rule_val:
+                        raw_val = item.get("quantity", "")
+                    elif "taxable" in rule_val or "value" in rule_val:
+                        raw_val = item.get("taxable_value", item.get("value", ""))
+                    elif "igst amt" in rule_val or "igst rs" in rule_val:
+                        raw_val = item.get("igst_amt", "")
+                    elif "gross" in rule_val:
+                        raw_val = item.get("gross_wt", "")
+                    elif "net" in rule_val:
+                        raw_val = item.get("net_wt", "")
+                    elif "hs" in rule_val or "ritc" in rule_val:
+                        raw_val = item.get("hs_code", "")
+                    elif "license_no" in rule_val:
+                        raw_val = item.get("license_no", "")
+                    elif "license_date" in rule_val:
+                        raw_val = item.get("license_date", "")
+                    else:
+                        raw_val = item.get("hs_code", "")
+                
+                # 🟢 2. WELSPUN और अन्य सभी के लिए पुराना मक्खन जैसा वर्किंग लॉजिक
                 else:
-                    raw_val = item.get("hs_code", "")
+                    nums_list = item.get("nums", [])
+                    if "hs" in rule_val or "ritc" in rule_val:
+                        raw_val = item.get("hs_code", "")
+                    elif "qty" in rule_val or "quantity" in rule_val:
+                        raw_val = nums_list[0] if len(nums_list) > 0 else ""
+                    elif "rate" in rule_val:
+                        raw_val = nums_list[1] if len(nums_list) > 1 else ""
+                    elif "value" in rule_val:
+                        raw_val = nums_list[2] if len(nums_list) > 2 else (nums_list[0] if nums_list else "")
+                    elif "desc" in rule_val:
+                        raw_val = item.get("description_text", "")
+                    elif "dbk" in rule_val:
+                        raw_val = item.get("dbk_found", "")
+                    else:
+                        raw_val = item.get("hs_code", "")
 
             try:
-                ws[cell_ref] = float(str(raw_val).replace(",", ""))
+                if str(raw_val).strip() and not str(raw_val).startswith("'"):
+                    if "." in str(raw_val):
+                        ws[cell_ref] = float(str(raw_val).replace(",", ""))
+                    else:
+                        ws[cell_ref] = int(str(raw_val).replace(",", ""))
+                else:
+                    ws[cell_ref] = raw_val
             except:
                 ws[cell_ref] = raw_val
                     
