@@ -1,19 +1,41 @@
 import re
 import streamlit as st
 from pdf_engine import apply_value_replacement
-from parser_welspun import extract_welspun_items
-from parser_bkt import extract_bkt_items
 
-def extract_item_table_rows(pdf_lines, parser_rule="Rule_Welspun"):
-    rule_name = str(parser_rule).strip().lower()
+def extract_item_table_rows(pdf_lines):
+    parsed_items = []
     
-    # 🟢 1. यदि शिपर के नाम में 'balkrishna' है, तो Balkrishna Industries Limited (BKT) का पार्सर चलेगा
-    if "balkrishna" in rule_name:
-        return extract_bkt_items(pdf_lines)
-    
-    # 🟢 2. बाकी सभी (जैसे Welspun या कोई नया शिपर) डिफ़ॉल्ट रूप से Welspun वाले वर्किंग पार्सर पर चलेंगे
-    else:
-        return extract_welspun_items(pdf_lines)
+    for line in pdf_lines:
+        line_str = line.strip()
+        if re.match(r'^\d{8}\b', line_str):
+            parts = [p.strip() for p in line_str.split() if p.strip()]
+            if len(parts) >= 3:
+                item_dict = {
+                    "raw_parts": parts,
+                    "hs_code": parts[0]
+                }
+                
+                nums = re.findall(r'[\d,]+\.\d{2,3}', line_str)
+                item_dict["nums"] = nums
+                
+                dbk_match = re.search(r'\b\d{6}[A-Za-z]?\b|\b\d{10}[A-Za-z]?\b', line_str)
+                item_dict["dbk_found"] = dbk_match.group(0) if dbk_match else ""
+
+                if len(nums) > 0:
+                    first_num = nums[0]
+                    start_pos = len(parts[0])
+                    end_pos = line_str.find(first_num)
+                    if end_pos > start_pos:
+                        desc_text = line_str[start_pos:end_pos].strip()
+                        if item_dict["dbk_found"]:
+                            desc_text = desc_text.replace(item_dict["dbk_found"], "").strip()
+                        item_dict["description_text"] = desc_text
+                else:
+                    item_dict["description_text"] = " ".join(parts[1:]) if len(parts) > 1 else ""
+                        
+                parsed_items.append(item_dict)
+                
+    return parsed_items
 
 @st.dialog("⚠️ Urgent: Manual IGST Status Required")
 def get_manual_igst_choice(invoice_identifier):
@@ -26,12 +48,11 @@ def get_manual_igst_choice(invoice_identifier):
         st.session_state[f"resolved_igst_{invoice_identifier}"] = selected_choice
         st.rerun()
 
-def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_overall_sr=1, start_excel_row=2, default_invoice_no="", default_invoice_date="", pdf_text="", lut_kws="", paid_kws="", parser_rule="Rule_Welspun"):
+def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_overall_sr=1, start_excel_row=2, default_invoice_no="", default_invoice_date="", pdf_text="", lut_kws="", paid_kws=""):
     curr_row = start_excel_row
     overall_sr = start_overall_sr
     
     pdf_text_upper = str(pdf_text).upper()
-    rule_name_lower = str(parser_rule).strip().lower()
     
     l_keywords = [k.strip().upper() for k in str(lut_kws).split(",") if k.strip()]
     p_keywords = [k.strip().upper() for k in str(paid_kws).split(",") if k.strip()]
@@ -66,6 +87,22 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
             get_manual_igst_choice(inv_key)
             st.stop()
 
+    # PDF se commodities extract karna (jaise (1), (2) etc.)
+    extracted_commodities = []
+    if pdf_text:
+        comm_matches = re.findall(r'\((\d+)\)(.*?)(?=\(\d+\)|Freight Terms|$)', pdf_text, re.DOTALL)
+        if comm_matches:
+            seen_srs = set()
+            for c_no, c_desc in comm_matches:
+                sr_clean = c_no.strip()
+                if sr_clean not in seen_srs:
+                    seen_srs.add(sr_clean)
+                    clean_desc = re.sub(r'\s+', ' ', c_desc).strip()
+                    extracted_commodities.append({
+                        "sr": sr_clean,
+                        "desc": clean_desc
+                    })
+
     max_rows = len(parsed_items)
 
     for item_idx in range(max_rows):
@@ -76,75 +113,98 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
         ws[f"H{curr_row}"] = item_sr_no                                      
         ws[f"V{curr_row}"] = v_column_value               
         
+        nums = item.get("nums", [])
+
+        # 🎯 Dynamic mapping based strictly on UI item_rules configuration
         for field_name, r_info in item_rules.items():
             col_letter = r_info.get("col", "").strip().upper()
             rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
-            rule_val = str(r_info.get("rule", "")).strip().lower()
+            rule_val = str(r_info.get("rule", "")).strip()
             
             if not col_letter or col_letter == "V":
                 continue
                 
             cell_ref = f"{col_letter}{curr_row}"
-            raw_val = ""
             
+            # Agar user ne UI me Name of Commodity ya Sr. ke liye rule set kiya hai
+            f_lower = field_name.lower()
+            if "commodity" in f_lower or "name of commodity" in rule_val.lower() or "description" in f_lower:
+                if extracted_commodities and item_idx < len(extracted_commodities):
+                    ws[cell_ref] = extracted_commodities[item_idx]["desc"]
+                continue
+            elif "sr" in f_lower or field_name == "Sr." or rule_val == "(1)":
+                if extracted_commodities and item_idx < len(extracted_commodities):
+                    ws[cell_ref] = extracted_commodities[item_idx]["sr"]
+                else:
+                    ws[cell_ref] = item_sr_no
+                continue
+
+            # Standard rules processing
             if rule_type_raw.lower() == "constant text":
-                raw_val = apply_value_replacement(rule_val, rule_val)
+                ws[cell_ref] = apply_value_replacement(rule_val, rule_val)
             elif rule_type_raw.lower() == "excel cell reference":
                 if rule_val and len(rule_val) >= 2 and rule_val[1].isdigit():
                     ws[cell_ref] = f"={rule_val}"
-                    continue
                 else:
-                    raw_val = rule_val
-            else:
-                # 🟢 1. BALKRISHNA INDUSTRIES LIMITED के लिए स्पेसिफिक कीज़
-                if "balkrishna" in rule_name_lower:
-                    if "quantity" in rule_val or "qty" in rule_val:
-                        raw_val = item.get("quantity", "")
-                    elif "taxable" in rule_val or "value" in rule_val:
-                        raw_val = item.get("taxable_value", item.get("value", ""))
-                    elif "igst amt" in rule_val or "igst rs" in rule_val:
-                        raw_val = item.get("igst_amt", "")
-                    elif "gross" in rule_val:
-                        raw_val = item.get("gross_wt", "")
-                    elif "net" in rule_val:
-                        raw_val = item.get("net_wt", "")
-                    elif "hs" in rule_val or "ritc" in rule_val:
-                        raw_val = item.get("hs_code", "")
-                    elif "license_no" in rule_val:
-                        raw_val = item.get("license_no", "")
-                    elif "license_date" in rule_val:
-                        raw_val = item.get("license_date", "")
+                    ws[cell_ref] = rule_val
+            elif "smart" in rule_type_raw.lower():
+                if ":" in rule_val:
+                    smart_parts = [p.strip() for p in rule_val.split(":")]
+                    if len(smart_parts) == 3:
+                        search_kw = smart_parts[0].upper().replace(" ", "")
+                        match_val = smart_parts[1]
+                        fallback_val = smart_parts[2]
+                        
+                        clean_pdf_upper = re.sub(r'\s+', '', str(pdf_text).upper())
+                        
+                        if search_kw in clean_pdf_upper:
+                            ws[cell_ref] = match_val
+                        else:
+                            ws[cell_ref] = fallback_val
                     else:
-                        raw_val = item.get("hs_code", "")
+                        ws[cell_ref] = rule_val
+                else:
+                    desc = item.get("description_text", "").upper()
+                    if "PCS" in desc or "PC" in desc:
+                        ws[cell_ref] = "PCS"
+                    else:
+                        ws[cell_ref] = rule_val if rule_val else "SET"
+            elif "pdf" in rule_type_raw.lower():
+                r_val_lower = rule_val.lower().strip()
+                f_name_lower = field_name.lower().strip()
                 
-                # 🟢 2. WELSPUN और अन्य सभी के लिए पुराना मक्खन जैसा वर्किंग लॉजिक
-                else:
-                    nums_list = item.get("nums", [])
-                    if "hs" in rule_val or "ritc" in rule_val:
-                        raw_val = item.get("hs_code", "")
-                    elif "qty" in rule_val or "quantity" in rule_val:
-                        raw_val = nums_list[0] if len(nums_list) > 0 else ""
-                    elif "rate" in rule_val:
-                        raw_val = nums_list[1] if len(nums_list) > 1 else ""
-                    elif "value" in rule_val:
-                        raw_val = nums_list[2] if len(nums_list) > 2 else (nums_list[0] if nums_list else "")
-                    elif "desc" in rule_val:
-                        raw_val = item.get("description_text", "")
-                    elif "dbk" in rule_val:
-                        raw_val = item.get("dbk_found", "")
-                    else:
-                        raw_val = item.get("hs_code", "")
+                raw_val = ""
+                
+                if "igst %" in r_val_lower or "igst rate" in f_name_lower or ("igst" in f_name_lower and "%" in f_name_lower) or ("igst" in f_name_lower and "rate" in f_name_lower):
+                    raw_val = nums[5] if len(nums) > 5 else ""
+                elif "igst amt" in r_val_lower or "igst amount" in f_name_lower or ("igst" in f_name_lower and "amt" in f_name_lower):
+                    raw_val = nums[6] if len(nums) > 6 else ""
+                elif "hs" in r_val_lower or "ritc" in f_name_lower or "hs code" in r_val_lower:
+                    raw_val = item.get("hs_code", "")
+                elif "description" in r_val_lower or "description" in f_name_lower:
+                    raw_val = item.get("description_text", "")
+                elif "dbk" in r_val_lower or "drawback" in f_name_lower or col_letter == "S":
+                    raw_val = item.get("dbk_found", "")
+                    if raw_val and not str(raw_val).upper().endswith("B"):
+                        raw_val = f"{raw_val}B"
+                elif "weight" in r_val_lower or "net wt" in f_name_lower:
+                    raw_val = nums[0] if len(nums) > 0 else ""
+                elif "qty" in r_val_lower or "quantity" in f_name_lower:
+                    raw_val = nums[1] if len(nums) > 1 else ""
+                elif "rate" in r_val_lower or "rate" in f_name_lower:
+                    raw_val = nums[2] if len(nums) > 2 else ""
+                elif "amount usd" in r_val_lower or "goods value" in f_name_lower or "amount" in r_val_lower:
+                    raw_val = nums[3] if len(nums) > 3 else ""
+                elif "taxable" in r_val_lower or "taxable" in f_name_lower:
+                    raw_val = nums[4] if len(nums) > 4 else ""
+                
+                if "=" in rule_val:
+                    raw_val = apply_value_replacement(raw_val, rule_val)
 
-            try:
-                if str(raw_val).strip() and not str(raw_val).startswith("'"):
-                    if "." in str(raw_val):
-                        ws[cell_ref] = float(str(raw_val).replace(",", ""))
-                    else:
-                        ws[cell_ref] = int(str(raw_val).replace(",", ""))
-                else:
+                try:
+                    ws[cell_ref] = float(str(raw_val).replace(",", ""))
+                except:
                     ws[cell_ref] = raw_val
-            except:
-                ws[cell_ref] = raw_val
                     
         curr_row += 1
         overall_sr += 1
