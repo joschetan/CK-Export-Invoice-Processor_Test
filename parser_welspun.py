@@ -6,7 +6,6 @@ def extract_welspun_items(pdf_lines, pdf_text=""):
     """
     parsed_items = []
     
-    # 1. Pehle PDF text se commodities (jaise (1), (2) etc.) extract karne ka logic yahan add kar diya hai
     extracted_commodities = []
     if pdf_text:
         comm_matches = re.findall(r'\((\d+)\)(.*?)(?=\(\d+\)|Freight Terms|$)', pdf_text, re.DOTALL)
@@ -22,8 +21,7 @@ def extract_welspun_items(pdf_lines, pdf_text=""):
                         "desc": clean_desc
                     })
 
-    # 2. Standard row item parsing (HS Code, nums, DBK, description)
-    for idx, line in enumerate(pdf_lines):
+    for line in pdf_lines:
         line_str = line.strip()
         if re.match(r'^\d{8}\b', line_str):
             parts = [p.strip() for p in line_str.split() if p.strip()]
@@ -51,7 +49,6 @@ def extract_welspun_items(pdf_lines, pdf_text=""):
                 else:
                     item_dict["description_text"] = " ".join(parts[1:]) if len(parts) > 1 else ""
                 
-                # Agar extracted commodities available hain toh is item ke sath map kar do
                 item_idx = len(parsed_items)
                 if extracted_commodities and item_idx < len(extracted_commodities):
                     item_dict["commodity_sr"] = extracted_commodities[item_idx]["sr"]
@@ -63,3 +60,95 @@ def extract_welspun_items(pdf_lines, pdf_text=""):
                 parsed_items.append(item_dict)
                 
     return parsed_items
+
+
+def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_overall_sr=1, start_excel_row=2, default_invoice_no="", default_invoice_date="", pdf_text="", lut_kws="", paid_kws="", parser_rule=""):
+    """
+    Dynamic Excel mapping function for Welspun.
+    """
+    curr_row = start_excel_row
+    overall_sr = start_overall_sr
+    
+    pdf_text_upper = str(pdf_text).upper()
+    
+    l_keywords = [k.strip().upper() for k in str(lut_kws).split(",") if k.strip()]
+    p_keywords = [k.strip().upper() for k in str(paid_kws).split(",") if k.strip()]
+    
+    matched_lut = False
+    for kw in l_keywords:
+        clean_kw = kw.replace("NO.", "").replace(".", "").strip()
+        if clean_kw and clean_kw in pdf_text_upper:
+            matched_lut = True
+            break
+            
+    matched_paid = False
+    for kw in p_keywords:
+        clean_kw = kw.replace(".", "").strip()
+        if clean_kw and clean_kw in pdf_text_upper:
+            matched_paid = True
+            break
+
+    v_column_value = "LUT" if matched_lut else ("P" if matched_paid else "LUT")
+
+    max_rows = len(parsed_items)
+
+    for item_idx in range(max_rows):
+        item_sr_no = item_idx + 1
+        item = parsed_items[item_idx] if item_idx < len(parsed_items) else {}
+        
+        ws[f"G{curr_row}"] = inv_sr_no                    
+        ws[f"H{curr_row}"] = item_sr_no                                      
+        ws[f"V{curr_row}"] = v_column_value               
+        
+        nums = item.get("nums", [])
+
+        if "commodity_sr" in item and "commodity_desc" in item:
+            for field_name, r_info in item_rules.items():
+                col_letter = r_info.get("col", "").strip().upper()
+                f_lower = field_name.lower()
+                if "commodity" in f_lower or "description" in f_lower:
+                    if col_letter: ws[f"{col_letter}{curr_row}"] = item["commodity_desc"]
+                elif "sr" in f_lower or field_name == "Sr.":
+                    if col_letter: ws[f"{col_letter}{curr_row}"] = item["commodity_sr"]
+
+        for field_name, r_info in item_rules.items():
+            col_letter = r_info.get("col", "").strip().upper()
+            rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
+            rule_val = str(r_info.get("rule", "")).strip()
+            
+            if not col_letter or col_letter == "V":
+                continue
+                
+            cell_ref = f"{col_letter}{curr_row}"
+            
+            if "pdf" in rule_type_raw.lower():
+                r_val_lower = rule_val.lower().strip()
+                f_name_lower = field_name.lower().strip()
+                raw_val = ""
+                
+                if "hs" in r_val_lower or "hs code" in r_val_lower:
+                    raw_val = item.get("hs_code", "")
+                elif "description" in r_val_lower or "description" in f_name_lower:
+                    raw_val = item.get("description_text", "")
+                elif "dbk" in r_val_lower or col_letter == "S":
+                    raw_val = item.get("dbk_found", "")
+                    if raw_val and not str(raw_val).upper().endswith("B"):
+                        raw_val = f"{raw_val}B"
+                elif "weight" in r_val_lower:
+                    raw_val = nums[0] if len(nums) > 0 else ""
+                elif "qty" in r_val_lower:
+                    raw_val = nums[1] if len(nums) > 1 else ""
+                elif "rate" in r_val_lower:
+                    raw_val = nums[2] if len(nums) > 2 else ""
+                elif "amount" in r_val_lower:
+                    raw_val = nums[3] if len(nums) > 3 else ""
+
+                try:
+                    ws[cell_ref] = float(str(raw_val).replace(",", ""))
+                except:
+                    ws[cell_ref] = raw_val
+                    
+        curr_row += 1
+        overall_sr += 1
+        
+    return ws, overall_sr, curr_row
