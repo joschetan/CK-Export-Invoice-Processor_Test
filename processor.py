@@ -91,9 +91,14 @@ def render_processor():
                         pdf_text = ""
                         pdf_lines = []
                         
+                        # 🚀 पक्का करें कि PDF बाइट्स हमेशा सेशन स्टेट में कैच रहें ताकि बॉक्स एक्सट्रैक्शन फेल न हो
+                        if inv_file:
+                            file_bytes_cache = inv_file.getvalue()
+                            st.session_state["cached_pdf_bytes"] = file_bytes_cache
+                        
                         file_name_lower = inv_file.name.lower()
                         if file_name_lower.endswith(".pdf"):
-                            with pdfplumber.open(inv_file) as pdf:
+                            with pdfplumber.open(BytesIO(st.session_state["cached_pdf_bytes"])) as pdf:
                                 for page in pdf.pages:
                                     t = page.extract_text()
                                     if t:
