@@ -4,10 +4,9 @@ import pdfplumber
 import re
 from io import BytesIO
 
-# 🚀 item_parser को हटाकर dedicated parsers को इम्पोर्ट किया गया है
-from parser_welspun import extract_welspun_items
+# 🚀 Sirf dedicated parsers import honge (item_parser ko hata diya gaya hai)
+from parser_welspun import extract_welspun_items, map_items_to_excel_dynamic
 from parser_bkt import extract_bkt_items
-from item_parser import map_items_to_excel_dynamic # (नोट: map function को supporting file या supporting_engine में रखा जा सकता है, फिलहाल इसे dynamic mapping के लिए इस्तेमाल कर रहे हैं)
 
 from shipper_data import fetch_data_from_google_sheet, ensure_default_shipper
 from pdf_engine import apply_rule_filter, extract_header_value
@@ -202,14 +201,13 @@ def render_processor():
                                 "rule": actual_rule_val
                             }
 
-                        # 🚀 यहाँ तय किया जा रहा है कि शिपर के आधार पर कौन सा Parser चलना चाहिए (Welspun या BKT)
+                        # 🚀 Shipper ke hisab se sahi parser call hoga
                         if "welspun" in active_parser_rule:
-                            parsed_items = extract_welspun_items(pdf_lines)
+                            parsed_items = extract_welspun_items(pdf_lines, pdf_text=pdf_text)
                         elif "bkt" in active_parser_rule:
                             parsed_items = extract_bkt_items(pdf_lines)
                         else:
-                            # यदि कोई नया या दूसरा शिपर है, तो डिफ़ॉल्ट रूप से welspun या उपयुक्त लॉजिक सेट किया जा सकता है
-                            parsed_items = extract_welspun_items(pdf_lines)
+                            parsed_items = extract_welspun_items(pdf_lines, pdf_text=pdf_text)
                         
                         ws, overall_item_sr, excel_write_row = map_items_to_excel_dynamic(
                             ws, parsed_items, resolved_item_rules,
