@@ -103,7 +103,7 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
         
         nums = item.get("nums", [])
 
-        # 🚀 1. Handle Consignee / Buyer Box / Extract fields (BW, BY etc. multi-line mapping)
+        # 🚀 1. Handle Consignee / Buyer Box / Extract fields (BW, BY etc. multi-line mapping)[cite: 16]
         for field_name, r_info in item_rules.items():
             col_letter = r_info.get("col", "").strip().upper()
             rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
@@ -113,9 +113,17 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
                 continue
                 
             if "extract" in rule_type_raw.lower() or "box" in rule_type_raw.lower() or "header" in rule_type_raw.lower():
-                extracted_val = extract_header_value(pdf_lines, pdf_text, rule_val, "Right (आगे)", "Exact Word", "", "None", field_label=field_name)
+                # यहाँ '📦 Extract Inside Box (डब्बे के अंदर का टेक्स्ट)' पोजीशन पास कर दी गई है
+                extracted_val = extract_header_value(
+                    pdf_lines, pdf_text, rule_val, 
+                    "📦 Extract Inside Box (डब्बे के अंदर का टेक्स्ट)", 
+                    "Exact Word", "", "None", 
+                    field_label=field_name, 
+                    pdf_bytes=st.session_state.get("cached_pdf_bytes", None)
+                )
+                
                 if not extracted_val or not extracted_val.strip():
-                    extracted_val = extract_header_value(pdf_lines, pdf_text, rule_val, "Below (नीचे)", "Contains", "", "None", field_label=field_name)
+                    extracted_val = extract_header_value(pdf_lines, pdf_text, rule_val, "Right (आगे)", "Exact Word", "", "None", field_label=field_name)
                 
                 if extracted_val and "\n" in str(extracted_val):
                     lines = [l.strip() for l in str(extracted_val).split("\n") if l.strip()]
@@ -129,7 +137,7 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
                     else:
                         ws[f"{col_letter}{curr_row}"] = ""
 
-        # 🚀 2. Commodity Sr (BR) & Name of Commodity (BS) mapping
+        # 🚀 2. Commodity Sr (BR) & Name of Commodity (BS) mapping[cite: 16]
         for field_name, r_info in item_rules.items():
             col_letter = r_info.get("col", "").strip().upper()
             f_lower = field_name.lower()
@@ -145,7 +153,7 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
             elif "sr" in f_lower or f_lower == "sr." or rule_val_lower in ["(1)", "sr", "serial"] or col_letter == "BR":
                 ws[cell_ref] = item.get("commodity_sr", "")
 
-        # 🚀 3. Standard PDF Row Item Numeric & Other columns mapping (Including Column S for DBK)
+        # 🚀 3. Standard PDF Row Item Numeric & Other columns mapping (Including Column S for DBK)[cite: 16]
         for field_name, r_info in item_rules.items():
             col_letter = r_info.get("col", "").strip().upper()
             rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
@@ -179,7 +187,7 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
                 elif "description" in r_val_lower or "description" in f_name_lower:
                     raw_val = item.get("description_text", "")
                 elif "dbk" in r_val_lower or "drawback" in f_name_lower or col_letter == "S":
-                    raw_val = item.get("dbk_found", "") # Gets 630201B format
+                    raw_val = item.get("dbk_found", "") 
                 elif "weight" in r_val_lower or "net wt" in f_name_lower:
                     raw_val = nums[0] if len(nums) > 0 else ""
                 elif "qty" in r_val_lower or "quantity" in f_name_lower:
@@ -196,7 +204,7 @@ def map_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_
 
                 try:
                     if col_letter == "S":
-                        ws[cell_ref] = raw_val  # Keep DBK string (630201B)
+                        ws[cell_ref] = raw_val 
                     else:
                         ws[cell_ref] = float(str(raw_val).replace(",", ""))
                 except:
