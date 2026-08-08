@@ -176,7 +176,7 @@ def render_shipper_data():
         new_shipper_name = st.text_input("नया शिपर कंपनी का नाम दर्ज करें:", key="input_new_shipper_name")
         
         # 🚀 अनिवार्य पार्सर सिलेक्शन ड्रॉपडाउन (अब नया शिपर बिना पार्सर के नहीं बन सकता)
-        available_parsers = ["parser_welspun", "parser_bkt"]
+        available_parsers = ["parser_welspun", "parser_bkt", "parser_polycab"]
         selected_parser_rule = st.selectbox("इस शिपर के लिए पार्सर रूल (Parser File) चुनें:", available_parsers, key="input_new_shipper_parser")
         
         if st.button("Create New Shipper Profile", type="primary", key="btn_create_shipper"):
@@ -209,7 +209,7 @@ def render_shipper_data():
             
             # 🚀 मौजूदा शिपर के लिए भी पार्सर बदलने का ऑप्शन (Edit Mode)
             current_assigned_parser = shipper_info.get("item_table_rule_name", "parser_welspun")
-            available_parsers = ["parser_welspun", "parser_bkt"]
+            available_parsers = ["parser_welspun", "parser_bkt", "parser_polycab"]
             p_idx = available_parsers.index(current_assigned_parser) if current_assigned_parser in available_parsers else 0
             
             updated_parser_choice = st.selectbox("📌 इस शिपर के लिए एक्टिव पार्सर रूल (Parser File):", available_parsers, index=p_idx, key=f"sel_parser_{selected_shipper}")
