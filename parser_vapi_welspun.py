@@ -4,7 +4,7 @@ from pdf_engine import apply_value_replacement, extract_header_value
 
 def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
     """
-    Vapi Welspun Dedicated Item Table Parser Logic (Strictly filtered by 8-digit HSN code).
+    Vapi Welspun Dedicated Item Table Parser Logic (Strictly capturing only the 5 valid item rows).
     """
     parsed_items = []
     
@@ -26,28 +26,25 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
     for line in pdf_lines:
         line_str = line.strip()
         
-        # 🚀 सख्त शर्त: लाइन में कम से कम एक 8-digit HSN कोड (जैसे 57024910 या 63026090) होना अनिवार्य है
+        # 🚀 सबसे पक्की शर्त: केवल वही लाइन आइटम बनेगी जिसमें 8-digit HSN कोड हो 
+        # और साथ ही उसमें कम से कम 3 या उससे ज्यादा डेसिमल/नंबर्स हों (यानी Qty, Rate, Amount जो सिर्फ असली आइटम रो में होते हैं)
         hs_match = re.search(r'\b\d{8}\b', line_str)
+        nums = re.findall(r'[\d,]+\.\d{2,5}', line_str)
         
-        if hs_match:
-            # फुटर या टोटल लाइनों को छोड़ दें
+        # यदि HSN कोड है और कम से कम 3 numérica values (जैसे Nt.Wt, Qty, Rate) मौजूद हैं तभी यह असली आइटम है
+        if hs_match and len(nums) >= 3:
             if "SUM TOTAL" in line_str.upper() or "GROSS WEIGHT" in line_str.upper() or "TOTAL FOB" in line_str.upper():
                 continue
                 
             hs_code = hs_match.group(0)
             
-            # लाइन से सभी नंबर्स (डेसिमल और कॉमा वाले) निकालें
-            nums = re.findall(r'[\d,]+\.\d{2,5}', line_str)
-            if not nums:
-                nums = re.findall(r'\b[\d,]+\b', line_str)
-            
-            # DBK Sr निकालना (लाइन का सबसे पहला शब्द या कोड)
+            # DBK Sr निकालना
             parts = [p.strip() for p in line_str.split() if p.strip()]
             dbk_found = parts[0] if parts else ""
             if dbk_found and not dbk_found.upper().endswith("B") and dbk_found.isdigit():
                 dbk_found = f"{dbk_found}B"
 
-            # डिस्क्रिप्शन टेक्स्ट निकालना (HS Code और नंबर्स को हटाकर जो बचे)
+            # डिस्क्रिप्शन टेक्स्ट निकालना (HS Code और नंबर्स हटाकर)
             desc_text = line_str
             for n in nums:
                 desc_text = desc_text.replace(n, "")
@@ -55,7 +52,7 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
             if dbk_found:
                 desc_text = desc_text.replace(dbk_found, "")
             
-            # फालतू शब्द या साइज हटाकर क्लीन डिस्क्रिप्शन बनाना
+            # फालतू साइज या शब्द हटाना
             desc_text = re.sub(r'\b(52\s*X\s*80|86\s*X\s*160|70\s*X\s*140|40\s*X\s*76|33\s*X\s*33|70X140)\b', '', desc_text)
             desc_text = re.sub(r'\s+', ' ', desc_text).strip()
             
@@ -112,7 +109,9 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
         ws[f"V{curr_row}"] = v_column_value               
         
         ws[f"I{curr_row}"] = default_invoice_no
-        ws[f"J{curr_row}"] = default_invoice_date
+        # J कॉलम में गलती से डेट आने से रोकने के लिए इसे केवल तभी भरेंगे जब यह वैलिड डेट हो
+        if default_invoice_date and not "ROSC" in str(default_invoice_date):
+            ws[f"J{curr_row}"] = default_invoice_date
         
         nums = item.get("nums", [])
 
@@ -122,7 +121,7 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
             rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
             rule_val = str(r_info.get("rule", "")).strip()
             
-            if not col_letter or col_letter in ["V", "BR", "BS", "S"]:
+            if not col_letter or col_letter in ["V", "BR", "BS", "S", "J"]:
                 continue
                 
             if "extract" in rule_type_raw.lower() or "box" in rule_type_raw.lower() or "header" in rule_type_raw.lower() or col_letter in ["BW", "BY"]:
@@ -157,7 +156,7 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
             f_lower = field_name.lower()
             rule_val_lower = str(r_info.get("rule", "")).lower()
             
-            if not col_letter:
+            if not col_letter or col_letter == "J":
                 continue
                 
             cell_ref = f"{col_letter}{curr_row}"
@@ -167,7 +166,7 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
             elif "sr" in f_lower or f_lower == "sr." or rule_val_lower in ["(1)", "sr", "serial"] or col_letter == "BR":
                 ws[cell_ref] = item.get("commodity_sr", "")
 
-        # 3. Standard Item Columns Mapping (सही कॉलम इंडेक्स के साथ)
+        # 3. Standard Item Columns Mapping
         for field_name, r_info in item_rules.items():
             col_letter = r_info.get("col", "").strip().upper()
             rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
@@ -188,7 +187,7 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
                 f_name_lower = field_name.lower().strip()
                 raw_val = ""
                 
-                # 🎯 सटीक नंबर पोजीशन मैपिंग (इनवॉइस के कॉलम ऑर्डर के अनुसार)
+                # 🎯 सही इंडेक्स और कॉलम मैपिंग
                 if col_letter == "K" or "hs" in r_val_lower or "ritc" in f_name_lower:
                     raw_val = item.get("hs_code", "")
                 elif col_letter == "M" or "description" in r_val_lower:
@@ -196,13 +195,13 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
                 elif col_letter == "S" or "dbk" in r_val_lower or "drawback" in f_name_lower:
                     raw_val = item.get("dbk_found", "")
                 elif col_letter == "AB" or "weight" in r_val_lower or "nt.wt" in f_name_lower:
-                    raw_val = nums[0] if len(nums) > 0 else ""      # Net Weight (जैसे 700.876)
+                    raw_val = nums[0] if len(nums) > 0 else ""      # Net Weight
                 elif col_letter == "N" or "quantity" in r_val_lower or "qty" in r_val_lower:
-                    raw_val = nums[1] if len(nums) > 1 else (nums[0] if len(nums) > 0 else "") # Qty (जैसे 1,872)
+                    raw_val = nums[1] if len(nums) > 1 else (nums[0] if len(nums) > 0 else "") # Qty
                 elif col_letter == "P" or "rate" in r_val_lower:
-                    raw_val = nums[2] if len(nums) > 2 else ""      # Rate (जैसे 2.41000)
+                    raw_val = nums[2] if len(nums) > 2 else ""      # Rate
                 elif col_letter == "Q" or "amount usd" in r_val_lower or "goods value" in f_name_lower:
-                    raw_val = nums[3] if len(nums) > 3 else ""      # Amount USD (जैसे 4,511.52)
+                    raw_val = nums[3] if len(nums) > 3 else ""      # Amount USD
                 elif col_letter == "W" or "taxable" in r_val_lower:
                     raw_val = nums[4] if len(nums) > 4 else (nums[3] if len(nums) > 3 else "") # Amount INR
                 elif col_letter == "X" or "igst%" in r_val_lower:
