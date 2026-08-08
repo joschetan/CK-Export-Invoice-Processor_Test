@@ -6,9 +6,8 @@ from pdf_engine import apply_value_replacement, extract_header_value
 
 def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
     """
-    Vapi Welspun Dedicated Item Table Parser Logic:
-    यह PDF की टेबल से 12 कॉलम को सीधे इंडेक्स (0 से 11) के रूप में कैप्चर करता है, 
-    ताकि आप UI में कॉलम नंबर डालकर डेटा को सही जगह भेज सकें।
+    Vapi Welspun Dedicated Item Table Parser Logic with Live Index Debugging:
+    यह PDF की टेबल से कॉलम्स को इंडेक्स के रूप में कैप्चर करेगा और टर्मिनल पर प्रिंट भी करेगा।
     """
     parsed_items = []
     
@@ -19,33 +18,24 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                 for page in pdf.pages:
                     tables = page.extract_tables()
                     for table in tables:
-                        for row in table:
-                            # चेक करें कि रो में कम से कम 12 कॉलम हैं और दूसरा कॉलम 8-digit HSN कोड है
-                            if row and len(row) >= 12:
-                                col2_text = str(row[1]).strip() if row[1] else ""
+                        for row_idx, row in enumerate(table):
+                            if row and len(row) >= 5:
+                                # 🔍 डिबगिंग के लिए कंसोल पर हर रो और उसका इंडेक्स प्रिंट करना
+                                print(f"--- ROW {row_idx} (Total Cols: {len(row)}) ---")
+                                for col_i, val in enumerate(row):
+                                    print(f"  Index [{col_i}] = {repr(val)}")
+
+                                # चेक करें कि क्या यह वैलिड आइटम रो है (दूसरा कॉलम 8-digit HSN हो)
+                                col2_text = str(row[1]).strip() if len(row) > 1 and row[1] else ""
                                 if re.search(r'^\d{8}$', col2_text):
-                                    # सीधे 0 से 11 तक के 12 कॉलम को इंडेक्स के रूप में सेव करना
-                                    item_dict = {
-                                        "col_0": str(row[0]).strip() if row[0] else "",   # DBK Sr
-                                        "col_1": str(row[1]).strip() if row[1] else "",   # HS Code
-                                        "col_2": str(row[2]).strip() if row[2] else "",   # Description
-                                        "col_3": str(row[3]).strip() if row[3] else "",   # Size (CM)
-                                        "col_4": str(row[4]).strip() if row[4] else "",   # SQMTR
-                                        "col_5": str(row[5]).strip() if row[5] else "",   # Nt.Wt (KGS)
-                                        "col_6": str(row[6]).strip() if row[6] else "",   # Quantity PC
-                                        "col_7": str(row[7]).strip() if row[7] else "",   # Rate in USDN
-                                        "col_8": str(row[8]).strip() if row[8] else "",   # Amount USDN
-                                        "col_9": str(row[9]).strip() if row[9] else "",   # Amount in INR
-                                        "col_10": str(row[10]).strip() if row[10] else "", # IGST %
-                                        "col_11": str(row[11]).strip() if row[11] else ""  # IGST Amount
-                                    }
+                                    item_dict = {f"col_{i}": (str(row[i]).strip() if i < len(row) and row[i] else "") for i in range(len(row))}
                                     parsed_items.append(item_dict)
         except Exception as e:
             st.error(f"Table Extraction Error: {str(e)}")
 
     # यदि नेटिव टेबल से न मिले तो खाली डिक्शनरी ताकि ऐप क्रैश न हो
     if not parsed_items:
-        parsed_items.append({f"col_{i}": "" for i in range(12)})
+        parsed_items.append({f"col_{i}": "" for i in range(20)})
 
     return parsed_items
 
@@ -53,7 +43,7 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
 def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_overall_sr=1, start_excel_row=2, default_invoice_no="", default_invoice_date="", pdf_text="", lut_kws="", paid_kws="", parser_rule=""):
     """
     Dynamic Excel mapping function: 
-    यह पूरी तरह UI के भरोसे है। UI में यूजर जो कॉलम नंबर (0 से 11) रूल में डालेगा, 
+    यह पूरी तरह UI के भरोसे है। UI में यूजर जो कॉलम नंबर (0 से आगे) रूल में डालेगा, 
     डेटा बिना किसी हार्ड-कोडिंग के सीधे उस एक्सेल कॉलम में चला जाएगा।
     """
     curr_row = start_excel_row
@@ -120,14 +110,12 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
             cell_ref = f"{col_letter}{curr_row}"
             raw_val = ""
             
-            # 🚀 यहाँ यूजर UI में जो रूल वैल्यू (जैसे 0, 1, 2... या col_0, col_1) डालेगा, 
-            # पार्सर बिल्कुल उसी के हिसाब से डेटा उठा कर एक्सेल कॉलम में भर देगा।
+            # 🚀 UI में यूजर जो नंबर (जैसे 0, 1, 2... या col_0) डालेगा, उसी के अनुसार डेटा उठेगा
             clean_rule_val = rule_val.replace("col_", "").strip()
             if clean_rule_val.isdigit():
                 col_key = f"col_{clean_rule_val}"
                 raw_val = item.get(col_key, "")
             else:
-                # यदि यूजर ने टेक्स्ट लिखा हो (जैसे hs, qty, rate आदि) तो उससे मैच करना
                 if "hs" in rule_val or "ritc" in rule_val:
                     raw_val = item.get("col_1", "")
                 elif "desc" in rule_val:
@@ -147,7 +135,6 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
                 raw_val = apply_value_replacement(str(raw_val), rule_val)
 
             try:
-                # यदि टेक्स्ट कॉलम हो (जैसे Description या HS Code) तो स्ट्रिंग रखें, वरना नंबर बनाएं
                 if col_letter in ["S", "K", "M"]:
                     ws[cell_ref] = str(raw_val).replace("\n", " ")
                 else:
