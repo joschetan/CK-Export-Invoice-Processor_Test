@@ -4,7 +4,7 @@ from pdf_engine import apply_value_replacement, extract_header_value
 
 def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
     """
-    Vapi Welspun Dedicated Item Table Parser Logic (Updated for flexible row & number extraction).
+    Vapi Welspun Dedicated Item Table Parser Logic (Strictly filtered by 8-digit code condition).
     """
     parsed_items = []
     
@@ -26,10 +26,13 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
     for line in pdf_lines:
         line_str = line.strip()
         
-        # 🚀 फ्लेक्सिबल रो डिटेक्शन: ऐसी लाइन जिसमें नंबर्स और डेसिमल वैल्यूज़ मौजूद हों (आइटम रो)
-        # यह चेक करता है कि लाइन में कम से कम कुछ डिजिट्स और एक HSN कोड या कोड हो
-        if re.search(r'\b\d{6,8}\b', line_str) or re.search(r'[\d,]+\.\d{2}', line_str):
-            # यदि यह हेडर या टोटल वाली लाइन है तो इसे छोड़ दें
+        # 🚀 सबसे पक्की शर्त: लाइन में कम से कम एक 6 से 8 डिजिट का कोड होना चाहिए (जैसे HSN या Cust Ref)
+        # और साथ ही उसमें डेसिमल वैल्यू (जैसे .876, .316 आदि मात्रा या वजन) होनी चाहिए ताकि यह पक्का हो कि यह आइटम टेबल की ही लाइन है।
+        has_code = re.search(r'\b\d{6,8}\b', line_str)
+        has_decimal = re.search(r'[\d,]+\.\d{2}', line_str)
+        
+        if has_code and has_decimal:
+            # यदि गलती से कोई टोटल या फुटर की लाइन आ जाए तो उसे हटा दें
             if "SUM TOTAL" in line_str.upper() or "GROSS WEIGHT" in line_str.upper() or "TOTAL FOB" in line_str.upper():
                 continue
                 
@@ -40,26 +43,24 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                     "hs_code": ""
                 }
                 
-                # HS Code ढूँढना (आम तौर पर 8-digit कोड)
+                # 8-digit HSN कोड पकड़ना
                 hs_match = re.search(r'\b\d{8}\b', line_str)
                 if hs_match:
                     item_dict["hs_code"] = hs_match.group(0)
                 else:
-                    # यदि 8-digit न मिले तो पहला बड़ा अंक या HSN देखें
                     for p in parts:
                         if p.isdigit() and len(p) >= 6:
                             item_dict["hs_code"] = p
                             break
 
-                # लाइन से सभी डेसिमल नंबर्स एक्सट्रेक्ट करना (Nt Wt, Qty, Rate, Amount, IGST आदि)
+                # लाइन से सभी डेसिमल नंबर्स एक्सट्रेक्ट करना
                 nums = re.findall(r'[\d,]+\.\d{2,5}', line_str)
-                # यदि डेसिमल न मिलें तो सामान्य संख्याएँ ढूँढें
                 if not nums:
                     nums = re.findall(r'\b\d+\b', line_str)
                 
                 item_dict["nums"] = nums
                 
-                # DBK Sr निकालना
+                # DBK Sr निकालना (पहली संख्या या 6 डिजिट कोड)
                 dbk_match = re.search(r'\b\d{6}[A-Za-z]?\b|\b\d{10}[A-Za-z]?\b', line_str)
                 found_dbk = dbk_match.group(0) if dbk_match else (parts[0] if parts else "")
                 
@@ -77,7 +78,6 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                 if item_dict["hs_code"]:
                     desc_text = desc_text.replace(item_dict["hs_code"], "")
                 
-                # फालतू स्पेसेस हटाना
                 desc_text = re.sub(r'\s+', ' ', desc_text).strip()
                 item_dict["description_text"] = desc_text if desc_text else "TEXTILE ARTICLES"
 
@@ -92,16 +92,6 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                         
                 parsed_items.append(item_dict)
                 
-    if not parsed_items:
-        parsed_items.append({
-            "hs_code": "63026090",
-            "description_text": "OTHER MADEUP TEXTILES ARTICLES",
-            "nums": [],
-            "dbk_found": "630201B",
-            "commodity_sr": "",
-            "commodity_desc": ""
-        })
-
     return parsed_items
 
 
@@ -214,7 +204,6 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
                 f_name_lower = field_name.lower().strip()
                 raw_val = ""
                 
-                # कॉलम और फील्ड के हिसाब से सही नंबर इंडेक्स चुनना
                 if "igst %" in r_val_lower or "igst rate" in f_name_lower or col_letter == "X":
                     raw_val = nums[-2] if len(nums) >= 2 else "5.00"
                 elif "igst amt" in r_val_lower or "igst amount" in f_name_lower or col_letter == "Y":
@@ -236,7 +225,6 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
                 elif "taxable" in r_val_lower or col_letter == "W":
                     raw_val = nums[4] if len(nums) > 4 else (nums[3] if len(nums) > 3 else "")
                 else:
-                    # यदि कोई अन्य कॉलम हो तो सीक्वेंस के अनुसार वैल्यू उठाएं
                     idx_map = {"AB": 0, "N": 1, "P": 2, "Q": 3, "W": 4, "X": 5, "Y": 6}
                     n_idx = idx_map.get(col_letter, 0)
                     raw_val = nums[n_idx] if len(nums) > n_idx else (nums[0] if nums else "")
