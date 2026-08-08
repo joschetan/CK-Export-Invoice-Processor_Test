@@ -6,11 +6,12 @@ from pdf_engine import apply_value_replacement, extract_header_value
 
 def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
     """
-    Vapi Welspun Dedicated Item Table Parser Logic using pdfplumber native table extraction (Index/Column 1, 2, 3...).
+    Vapi Welspun Dedicated Item Table Parser Logic:
+    यह PDF की टेबल से 12 कॉलम को सीधे इंडेक्स (0 से 11) के रूप में कैप्चर करता है, 
+    ताकि आप UI में कॉलम नंबर डालकर डेटा को सही जगह भेज सकें।
     """
     parsed_items = []
     
-    # 1. सीधे PDF से नेटिव टेबल स्ट्रक्चर निकालने की कोशिश
     cached_bytes = st.session_state.get("cached_pdf_bytes", None)
     if cached_bytes:
         try:
@@ -19,40 +20,41 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                     tables = page.extract_tables()
                     for table in tables:
                         for row in table:
-                            # चेक करें कि क्या यह रो एक वैलिड आइटम रो है (कम से कम 5-6 कॉलम और दूसरा कॉलम 8-digit HSN हो)
-                            if row and len(row) >= 8:
+                            # चेक करें कि रो में कम से कम 12 कॉलम हैं और दूसरा कॉलम 8-digit HSN कोड है
+                            if row and len(row) >= 12:
                                 col2_text = str(row[1]).strip() if row[1] else ""
-                                # यदि दूसरे कॉलम में 8-digit HSN कोड है (जैसे 57024910 या 63026090)
                                 if re.search(r'^\d{8}$', col2_text):
+                                    # सीधे 0 से 11 तक के 12 कॉलम को इंडेक्स के रूप में सेव करना
                                     item_dict = {
-                                        "dbk_sr": str(row[0]).strip() if row[0] else "",
-                                        "hs_code": col2_text,
-                                        "description_text": str(row[2]).strip() if row[2] else "",
-                                        "size": str(row[3]).strip() if row[3] else "",
-                                        "sqmtr": str(row[4]).strip() if row[4] else "",
-                                        "net_wt": str(row[5]).strip() if row[5] else "",
-                                        "qty": str(row[6]).strip() if row[6] else "",
-                                        "rate": str(row[7]).strip() if row[7] else "",
-                                        "amount_usd": str(row[8]).strip() if row[8] else "",
-                                        "amount_inr": str(row[9]).strip() if row[9] else "",
-                                        "igst_per": str(row[10]).strip() if row[10] else "",
-                                        "igst_amt": str(row[11]).strip() if row[11] else ""
+                                        "col_0": str(row[0]).strip() if row[0] else "",   # DBK Sr
+                                        "col_1": str(row[1]).strip() if row[1] else "",   # HS Code
+                                        "col_2": str(row[2]).strip() if row[2] else "",   # Description
+                                        "col_3": str(row[3]).strip() if row[3] else "",   # Size (CM)
+                                        "col_4": str(row[4]).strip() if row[4] else "",   # SQMTR
+                                        "col_5": str(row[5]).strip() if row[5] else "",   # Nt.Wt (KGS)
+                                        "col_6": str(row[6]).strip() if row[6] else "",   # Quantity PC
+                                        "col_7": str(row[7]).strip() if row[7] else "",   # Rate in USDN
+                                        "col_8": str(row[8]).strip() if row[8] else "",   # Amount USDN
+                                        "col_9": str(row[9]).strip() if row[9] else "",   # Amount in INR
+                                        "col_10": str(row[10]).strip() if row[10] else "", # IGST %
+                                        "col_11": str(row[11]).strip() if row[11] else ""  # IGST Amount
                                     }
                                     parsed_items.append(item_dict)
         except Exception as e:
             st.error(f"Table Extraction Error: {str(e)}")
 
-    # यदि नेटिव टेबल से डेटा न मिले तो पुराना लाइन-बाय-लाइन फॉलबैक तरीका इस्तेमाल होगा
+    # यदि नेटिव टेबल से न मिले तो खाली डिक्शनरी ताकि ऐप क्रैश न हो
     if not parsed_items:
-        # (लाइन आधारित फॉलबैक लॉजिक)
-        pass
+        parsed_items.append({f"col_{i}": "" for i in range(12)})
 
     return parsed_items
 
 
 def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_overall_sr=1, start_excel_row=2, default_invoice_no="", default_invoice_date="", pdf_text="", lut_kws="", paid_kws="", parser_rule=""):
     """
-    Dynamic Excel mapping function for Vapi Welspun using extracted column dictionaries.
+    Dynamic Excel mapping function: 
+    यह पूरी तरह UI के भरोसे है। UI में यूजर जो कॉलम नंबर (0 से 11) रूल में डालेगा, 
+    डेटा बिना किसी हार्ड-कोडिंग के सीधे उस एक्सेल कॉलम में चला जाएगा।
     """
     curr_row = start_excel_row
     overall_sr = start_overall_sr
@@ -103,11 +105,11 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
                 else:
                     ws[f"{col_letter}{curr_row}"] = extracted_val if item_idx == 0 else ""
 
-        # 2. Standard Item Columns Mapping (सीधे 1, 2, 3... कॉलम डेटा से)
+        # 2. 100% डायनेमिक UI-Driven Item Table Mapping
         for field_name, r_info in item_rules.items():
             col_letter = r_info.get("col", "").strip().upper()
             rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
-            rule_val = str(r_info.get("rule", "")).strip()
+            rule_val = str(r_info.get("rule", "")).strip().lower()
             
             if not col_letter or col_letter in ["V", "I", "J", "G", "BR", "BS"]:
                 continue
@@ -118,33 +120,34 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
             cell_ref = f"{col_letter}{curr_row}"
             raw_val = ""
             
-            # कॉलम लेटर के हिसाब से सटीक डेटा मैप करना
-            if col_letter == "K":
-                raw_val = item.get("hs_code", "")
-            elif col_letter == "M":
-                raw_val = item.get("description_text", "")
-            elif col_letter == "S":
-                dbk = item.get("dbk_sr", "")
-                raw_val = f"{dbk}B" if dbk and not dbk.upper().endswith("B") else dbk
-            elif col_letter == "AB":
-                raw_val = item.get("net_wt", "")
-            elif col_letter == "N":
-                raw_val = item.get("qty", "")
-            elif col_letter == "P":
-                raw_val = item.get("rate", "")
-            elif col_letter == "Q":
-                raw_val = item.get("amount_usd", "")
-            elif col_letter == "W":
-                raw_val = item.get("amount_inr", "")
-            elif col_letter == "X":
-                raw_val = item.get("igst_per", "5.00")
-            elif col_letter == "Y":
-                raw_val = item.get("igst_amt", "")
+            # 🚀 यहाँ यूजर UI में जो रूल वैल्यू (जैसे 0, 1, 2... या col_0, col_1) डालेगा, 
+            # पार्सर बिल्कुल उसी के हिसाब से डेटा उठा कर एक्सेल कॉलम में भर देगा।
+            clean_rule_val = rule_val.replace("col_", "").strip()
+            if clean_rule_val.isdigit():
+                col_key = f"col_{clean_rule_val}"
+                raw_val = item.get(col_key, "")
+            else:
+                # यदि यूजर ने टेक्स्ट लिखा हो (जैसे hs, qty, rate आदि) तो उससे मैच करना
+                if "hs" in rule_val or "ritc" in rule_val:
+                    raw_val = item.get("col_1", "")
+                elif "desc" in rule_val:
+                    raw_val = item.get("col_2", "")
+                elif "weight" in rule_val or "wt" in rule_val:
+                    raw_val = item.get("col_5", "")
+                elif "qty" in rule_val or "quantity" in rule_val:
+                    raw_val = item.get("col_6", "")
+                elif "rate" in rule_val:
+                    raw_val = item.get("col_7", "")
+                elif "amount" in rule_val or "goods value" in rule_val:
+                    raw_val = item.get("col_8", "")
+                else:
+                    raw_val = item.get("col_0", "")
 
             if "=" in rule_val:
                 raw_val = apply_value_replacement(str(raw_val), rule_val)
 
             try:
+                # यदि टेक्स्ट कॉलम हो (जैसे Description या HS Code) तो स्ट्रिंग रखें, वरना नंबर बनाएं
                 if col_letter in ["S", "K", "M"]:
                     ws[cell_ref] = str(raw_val).replace("\n", " ")
                 else:
