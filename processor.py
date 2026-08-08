@@ -8,6 +8,7 @@ from io import BytesIO
 from parser_welspun import extract_welspun_items, map_items_to_excel_dynamic
 from parser_bkt import extract_bkt_items
 from parser_polycab import extract_polycab_items, map_polycab_items_to_excel_dynamic
+from parser_vapi_welspun import extract_vapi_welspun_items, map_vapi_welspun_items_to_excel_dynamic
 
 from shipper_data import fetch_data_from_google_sheet, ensure_default_shipper
 from pdf_engine import apply_rule_filter, extract_header_value
@@ -214,11 +215,13 @@ def render_processor():
                                 "rule": actual_rule_val
                             }
 
-                        # 🚀 सटीक पार्सर कॉलिंग (Polycab, BKT या Welspun)
+                        # 🚀 सटीक पार्सर कॉलिंग (Vapi Welspun, Polycab, BKT या Welspun)
                         if assigned_parser == "parser_bkt":
                             parsed_items = extract_bkt_items(pdf_lines)
                         elif assigned_parser == "parser_polycab":
                             parsed_items = extract_polycab_items(pdf_lines, pdf_text=pdf_text)
+                        elif assigned_parser == "parser_vapi_welspun":
+                            parsed_items = extract_vapi_welspun_items(pdf_lines, pdf_text=pdf_text)
                         elif assigned_parser == "parser_welspun":
                             parsed_items = extract_welspun_items(pdf_lines, pdf_text=pdf_text)
                         else:
@@ -227,6 +230,19 @@ def render_processor():
                         # 🚀 मैपिंग फंक्शन कॉलिंग
                         if assigned_parser == "parser_polycab":
                             ws, overall_item_sr, excel_write_row = map_polycab_items_to_excel_dynamic(
+                                ws, parsed_items, resolved_item_rules,
+                                inv_sr_no=inv_sr_number, 
+                                start_overall_sr=overall_item_sr, 
+                                start_excel_row=excel_write_row, 
+                                default_invoice_no=current_inv_number, 
+                                default_invoice_date=current_inv_date,
+                                pdf_text=pdf_text,
+                                lut_kws=lut_kws,
+                                paid_kws=paid_kws,
+                                parser_rule=assigned_parser
+                            )
+                        elif assigned_parser == "parser_vapi_welspun":
+                            ws, overall_item_sr, excel_write_row = map_vapi_welspun_items_to_excel_dynamic(
                                 ws, parsed_items, resolved_item_rules,
                                 inv_sr_no=inv_sr_number, 
                                 start_overall_sr=overall_item_sr, 
