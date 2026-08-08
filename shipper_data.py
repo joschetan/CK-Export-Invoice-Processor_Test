@@ -175,7 +175,6 @@ def render_shipper_data():
     with st.expander("➕ Add New Shipper (नया शिपर जोड़ें)", expanded=False):
         new_shipper_name = st.text_input("नया शिपर कंपनी का नाम दर्ज करें:", key="input_new_shipper_name")
         
-        # 🚀 अनिवार्य पार्सर सिलेक्शन ड्रॉपडाउन (अब नया शिपर बिना पार्सर के नहीं बन सकता)
         available_parsers = ["parser_welspun", "parser_bkt", "parser_polycab"]
         selected_parser_rule = st.selectbox("इस शिपर के लिए पार्सर रूल (Parser File) चुनें:", available_parsers, key="input_new_shipper_parser")
         
@@ -198,16 +197,22 @@ def render_shipper_data():
                 else:
                     st.warning("⚠️ यह शिपर पहले से मौजूद है!")
 
-    shippers_list = list(st.session_state["shipper_database"].keys())
+    # 🚀 शिपर लिस्ट को अल्फाबेटिकल (A से Z) क्रम में सॉर्ट किया गया है
+    shippers_list = sorted(list(st.session_state["shipper_database"].keys()))
     
     if shippers_list:
-        selected_shipper = st.selectbox("कॉन्फ़िगर करने के लिए शिपर चुनें:", shippers_list, index=0)
+        # 🚀 index=None और placeholder से यह डिफ़ॉल्ट रूप से blank रहेगा और टाइप करके भी खोजा जा सकेगा
+        selected_shipper = st.selectbox(
+            "कॉन्फ़िगर करने के लिए शिपर चुनें:", 
+            shippers_list, 
+            index=None, 
+            placeholder="शिपर का नाम टाइप करें या चुनें..."
+        )
         
         if selected_shipper:
             st.write(f"### ⚙️ प्रोफाइल सेटअप और रूल्स: **{selected_shipper}**")
             shipper_info = st.session_state["shipper_database"][selected_shipper]
             
-            # 🚀 मौजूदा शिपर के लिए भी पार्सर बदलने का ऑप्शन (Edit Mode)
             current_assigned_parser = shipper_info.get("item_table_rule_name", "parser_welspun")
             available_parsers = ["parser_welspun", "parser_bkt", "parser_polycab"]
             p_idx = available_parsers.index(current_assigned_parser) if current_assigned_parser in available_parsers else 0
