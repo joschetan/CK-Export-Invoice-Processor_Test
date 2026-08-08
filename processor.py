@@ -4,9 +4,10 @@ import pdfplumber
 import re
 from io import BytesIO
 
-# 🚀 Sirf dedicated parsers import honge
+# 🚀 Dedicated parsers import
 from parser_welspun import extract_welspun_items, map_items_to_excel_dynamic
 from parser_bkt import extract_bkt_items
+from parser_polycab import extract_polycab_items, map_polycab_items_to_excel_dynamic
 
 from shipper_data import fetch_data_from_google_sheet, ensure_default_shipper
 from pdf_engine import apply_rule_filter, extract_header_value
@@ -71,7 +72,7 @@ def render_processor():
                     rules = shipper_info.get("mapping_rules", {})
                     item_table_rules = shipper_info.get("item_table_rules", {})
                     
-                    # 🚀 सीधा गूगल शीट / डेटाबेस से असाइंड पार्सर रूल पढ़ें (कोई अनुमान नहीं)
+                    # 🚀 शिपर के हिसाब से असाइंड पार्सर रूल पढ़ें
                     assigned_parser = shipper_info.get("item_table_rule_name", "parser_welspun").strip().lower()
                     
                     igst_cfg = shipper_info.get("igst_config", {})
@@ -92,7 +93,6 @@ def render_processor():
                         pdf_text = ""
                         pdf_lines = []
                         
-                        # 🚀 पक्का करें कि PDF बाइट्स हमेशा सेशन स्टेट में कैच रहें ताकि बॉक्स एक्सट्रैक्शन फेल न हो
                         if inv_file:
                             file_bytes_cache = inv_file.getvalue()
                             st.session_state["cached_pdf_bytes"] = file_bytes_cache
@@ -207,27 +207,43 @@ def render_processor():
                                 "rule": actual_rule_val
                             }
 
-                        # 🚀 शत-प्रतिशत सटीक पार्सर कॉलिंग (जो शिपर के लिए ड्रॉपडाउन से तय है, वही चलेगा)
+                        # 🚀 सटीक पार्सर कॉलिंग (Polycab, BKT या Welspun)
                         if assigned_parser == "parser_bkt":
                             parsed_items = extract_bkt_items(pdf_lines)
+                        elif assigned_parser == "parser_polycab":
+                            parsed_items = extract_polycab_items(pdf_lines, pdf_text=pdf_text)
                         elif assigned_parser == "parser_welspun":
                             parsed_items = extract_welspun_items(pdf_lines, pdf_text=pdf_text)
                         else:
-                            # यदि कोई अन्य कस्टम पार्सर हो तो यहाँ सीधे जोड़ा जा सके
                             parsed_items = extract_welspun_items(pdf_lines, pdf_text=pdf_text)
                         
-                        ws, overall_item_sr, excel_write_row = map_items_to_excel_dynamic(
-                            ws, parsed_items, resolved_item_rules,
-                            inv_sr_no=inv_sr_number, 
-                            start_overall_sr=overall_item_sr, 
-                            start_excel_row=excel_write_row, 
-                            default_invoice_no=current_inv_number, 
-                            default_invoice_date=current_inv_date,
-                            pdf_text=pdf_text,
-                            lut_kws=lut_kws,
-                            paid_kws=paid_kws,
-                            parser_rule=assigned_parser
-                        )
+                        # 🚀 मैपिंग फंक्शन कॉलिंग
+                        if assigned_parser == "parser_polycab":
+                            ws, overall_item_sr, excel_write_row = map_polycab_items_to_excel_dynamic(
+                                ws, parsed_items, resolved_item_rules,
+                                inv_sr_no=inv_sr_number, 
+                                start_overall_sr=overall_item_sr, 
+                                start_excel_row=excel_write_row, 
+                                default_invoice_no=current_inv_number, 
+                                default_invoice_date=current_inv_date,
+                                pdf_text=pdf_text,
+                                lut_kws=lut_kws,
+                                paid_kws=paid_kws,
+                                parser_rule=assigned_parser
+                            )
+                        else:
+                            ws, overall_item_sr, excel_write_row = map_items_to_excel_dynamic(
+                                ws, parsed_items, resolved_item_rules,
+                                inv_sr_no=inv_sr_number, 
+                                start_overall_sr=overall_item_sr, 
+                                start_excel_row=excel_write_row, 
+                                default_invoice_no=current_inv_number, 
+                                default_invoice_date=current_inv_date,
+                                pdf_text=pdf_text,
+                                lut_kws=lut_kws,
+                                paid_kws=paid_kws,
+                                parser_rule=assigned_parser
+                            )
 
                     output = BytesIO()
                     wb.save(output)
