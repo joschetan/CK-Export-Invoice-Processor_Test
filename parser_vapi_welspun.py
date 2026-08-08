@@ -26,12 +26,11 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
     for line in pdf_lines:
         line_str = line.strip()
         
-        # 🚀 सबसे पक्की शर्त: केवल वही लाइन आइटम बनेगी जिसमें 8-digit HSN कोड हो 
-        # और साथ ही उसमें कम से कम 3 या उससे ज्यादा डेसिमल/नंबर्स हों (यानी Qty, Rate, Amount जो सिर्फ असली आइटम रो में होते हैं)
+        # 🚀 सख्त शर्त: केवल वही लाइन आइटम बनेगी जिसमें 8-digit HSN कोड हो 
+        # और साथ ही उसमें कम से कम 3 या उससे ज्यादा नंबर्स हों (यानी Qty, Rate, Amount)
         hs_match = re.search(r'\b\d{8}\b', line_str)
         nums = re.findall(r'[\d,]+\.\d{2,5}', line_str)
         
-        # यदि HSN कोड है और कम से कम 3 numérica values (जैसे Nt.Wt, Qty, Rate) मौजूद हैं तभी यह असली आइटम है
         if hs_match and len(nums) >= 3:
             if "SUM TOTAL" in line_str.upper() or "GROSS WEIGHT" in line_str.upper() or "TOTAL FOB" in line_str.upper():
                 continue
@@ -109,7 +108,6 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
         ws[f"V{curr_row}"] = v_column_value               
         
         ws[f"I{curr_row}"] = default_invoice_no
-        # J कॉलम में गलती से डेट आने से रोकने के लिए इसे केवल तभी भरेंगे जब यह वैलिड डेट हो
         if default_invoice_date and not "ROSC" in str(default_invoice_date):
             ws[f"J{curr_row}"] = default_invoice_date
         
@@ -187,7 +185,7 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
                 f_name_lower = field_name.lower().strip()
                 raw_val = ""
                 
-                # 🎯 सही इंडेक्स और कॉलम मैपिंग
+                # 🎯 सुधरा हुआ कॉलम और नंबर मैपिंग लॉजिक
                 if col_letter == "K" or "hs" in r_val_lower or "ritc" in f_name_lower:
                     raw_val = item.get("hs_code", "")
                 elif col_letter == "M" or "description" in r_val_lower:
@@ -197,7 +195,8 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
                 elif col_letter == "AB" or "weight" in r_val_lower or "nt.wt" in f_name_lower:
                     raw_val = nums[0] if len(nums) > 0 else ""      # Net Weight
                 elif col_letter == "N" or "quantity" in r_val_lower or "qty" in r_val_lower:
-                    raw_val = nums[1] if len(nums) > 1 else (nums[0] if len(nums) > 0 else "") # Qty
+                    # 🚀 Qty के लिए डायनेमिक हैंडलिंग (चाहे PC हो या SET)
+                    raw_val = nums[1] if len(nums) > 1 else (nums[0] if len(nums) > 0 else "")
                 elif col_letter == "P" or "rate" in r_val_lower:
                     raw_val = nums[2] if len(nums) > 2 else ""      # Rate
                 elif col_letter == "Q" or "amount usd" in r_val_lower or "goods value" in f_name_lower:
@@ -218,7 +217,9 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
                     if col_letter in ["S", "K", "M"]:
                         ws[cell_ref] = str(raw_val)
                     else:
-                        ws[cell_ref] = float(str(raw_val).replace(",", ""))
+                        # Qty या अन्य संख्याओं से कॉमा हटाकर साफ फ्लोट वैल्यू बनाना
+                        clean_num = str(raw_val).replace(",", "").strip()
+                        ws[cell_ref] = float(clean_num)
                 except:
                     ws[cell_ref] = raw_val
                     
