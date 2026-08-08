@@ -1,7 +1,7 @@
 name: Build Portable App Folder
 
 on:
-  workflow_dispatch: # 👈 अब यह सिर्फ तभी चलेगा जब आप गिटहब पर जाकर खुद 'Run workflow' बटन दबाएंगे।
+  workflow_dispatch:
 
 jobs:
   build:
