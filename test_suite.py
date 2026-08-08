@@ -2,6 +2,8 @@ import streamlit as st
 import pdfplumber
 import re
 from pdf_engine import extract_header_value, apply_value_replacement
+from parser_welspun import extract_welspun_items
+from parser_bkt import extract_bkt_items
 
 def render_universal_test_suite(selected_shipper):
     st.markdown("---")
@@ -18,6 +20,7 @@ def render_universal_test_suite(selected_shipper):
     shipper_info = st.session_state["shipper_database"].get(selected_shipper, {})
     header_rules = shipper_info.get("mapping_rules", {})
     item_rules = shipper_info.get("item_table_rules", {})
+    assigned_parser = shipper_info.get("item_table_rule_name", "parser_welspun").strip().lower()
 
     col_category, col_field = st.columns([1, 2])
 
@@ -53,7 +56,6 @@ def render_universal_test_suite(selected_shipper):
 
             final_val = extract_header_value(pdf_lines, pdf_text, ky, pos, m_mode, stop_kw, final_flt)
 
-            # 🎯 DYNAMIC ROW DISPLAY SUPPORT FOR HEADER FIELDS
             display_cell = cl if cl else 'Not Set'
             if cl and cl.isalpha():
                 display_cell = f"{cl.upper()}2 (Dynamic Auto-Increment Row)"
@@ -74,60 +76,84 @@ def render_universal_test_suite(selected_shipper):
                     st.error("⚠️ **Result:** BLANK / NOT FOUND")
 
         else:
-            # Item Table Inspection Logic
+            # 🚀 SMART ROW-BY-ROW ITEM TABLE PREVIEW
             rule_info = item_rules[target_field]
             col_letter = rule_info.get("col", "").upper()
             rule_type = rule_info.get("type", "PDF Row Item")
             rule_val = rule_info.get("rule", "")
 
             st.markdown("#### 📋 Item Rule Configuration")
-            st.write(f"* **Target Column:** `{col_letter}`")
+            st.write(f"* **Target Excel Column:** `{col_letter}`")
             st.write(f"* **Rule Type:** `{rule_type}`")
-            st.write(f"* **Rule Value / Index:** `{rule_val}`")
+            st.write(f"* **Rule Value / Detail:** `{rule_val}`")
 
-            st.markdown("#### 🎯 First Row Simulated Data")
-            # PDF ki pehli HS Code wali line pe simulated run
-            first_item_found = None
-            for line in pdf_lines:
-                if re.match(r'^\d{8}\b', line.strip()):
-                    nums = re.findall(r'[\d,]+\.\d{2,3}', line)
-                    first_item_found = {"line": line.strip(), "nums": nums}
-                    break
+            st.markdown("---")
+            st.markdown(f"#### 📊 Row-by-Row Preview for Column `{col_letter}`")
 
-            if first_item_found:
-                st.code(f"Raw Line: {first_item_found['line']}", language="text")
-                st.write(f"Detected Numbers in Row: `{first_item_found['nums']}`")
-                
-                # Sample Extraction logic display
-                if rule_type == "Constant Text":
-                    sample_res = apply_value_replacement(rule_val, rule_val)
-                elif rule_type == "Excel Cell Reference":
-                    sample_res = f"={rule_val}"
-                elif rule_type == "Smart Detection":
-                    if ":" in rule_val:
-                        smart_parts = [p.strip() for p in rule_val.split(":")]
-                        if len(smart_parts) == 3:
-                            search_kw = smart_parts[0].upper()
-                            match_val = smart_parts[1]
-                            fallback_val = smart_parts[2]
-                            
-                            if search_kw in str(pdf_text).upper():
-                                sample_res = match_val
-                            else:
-                                sample_res = fallback_val
-                        else:
-                            sample_res = rule_val
-                    else:
-                        line_upper = first_item_found['line'].upper()
-                        if "PCS" in line_upper or "PC" in line_upper:
-                            sample_res = "PCS"
-                        else:
-                            sample_res = rule_val if rule_val else "SET"
-                else:
-                    sample_res = f"Mapped via {rule_type} ({rule_val})"
-                    if "=" in rule_val:
-                        sample_res = apply_value_replacement(sample_res, rule_val)
-
-                st.success(f"✅ **Simulated First Cell Output ({col_letter}2):** `{sample_res}`")
+            # सही पार्सर कॉल करके सारे आइटम्स निकालें
+            if "bkt" in assigned_parser:
+                parsed_items = extract_bkt_items(pdf_lines)
             else:
-                st.warning("⚠️ PDF में कोई 8-digit HS Code वाली रो नहीं मिली।")
+                parsed_items = extract_welspun_items(pdf_lines, pdf_text=pdf_text)
+
+            if parsed_items:
+                preview_table_data = []
+                for idx, item in enumerate(parsed_items):
+                    excel_row_num = 2 + idx  # मान लेते हैं डेटा Row 2 से शुरू होता है
+                    cell_target = f"{col_letter}{excel_row_num}"
+                    
+                    nums = item.get("nums", [])
+                    r_val_lower = str(rule_val).lower().strip()
+                    f_name_lower = target_field.lower().strip()
+                    extracted_cell_val = ""
+
+                    # सिमुलेशन लॉजिक ठीक वैसे ही जैसे प्रोसेसर में चलता है
+                    if rule_type == "Constant Text":
+                        extracted_cell_val = apply_value_replacement(rule_val, rule_val)
+                    elif rule_type == "Excel Cell Reference":
+                        extracted_cell_val = f"={rule_val}"
+                    elif rule_type == "Smart Detection":
+                        desc = item.get("description_text", "").upper()
+                        if "PCS" in desc or "PC" in desc:
+                            extracted_cell_val = "PCS"
+                        else:
+                            extracted_cell_val = rule_val if rule_val else "SET"
+                    else:
+                        # Standard PDF Row Item logic matching
+                        if "igst %" in r_val_lower or "igst rate" in f_name_lower:
+                            extracted_cell_val = nums[5] if len(nums) > 5 else ""
+                        elif "igst amt" in r_val_lower or "igst amount" in f_name_lower:
+                            extracted_cell_val = nums[6] if len(nums) > 6 else ""
+                        elif "hs" in r_val_lower or "ritc" in f_name_lower or "hs code" in r_val_lower:
+                            extracted_cell_val = item.get("hs_code", "")
+                        elif "description" in r_val_lower or "description" in f_name_lower:
+                            extracted_cell_val = item.get("description_text", "")
+                        elif "dbk" in r_val_lower or "drawback" in f_name_lower or col_letter == "S":
+                            extracted_cell_val = item.get("dbk_found", "")
+                        elif "weight" in r_val_lower or "net wt" in f_name_lower:
+                            extracted_cell_val = nums[0] if len(nums) > 0 else ""
+                        elif "qty" in r_val_lower or "quantity" in f_name_lower:
+                            extracted_cell_val = nums[1] if len(nums) > 1 else ""
+                        elif "rate" in r_val_lower:
+                            extracted_cell_val = nums[2] if len(nums) > 2 else ""
+                        elif "amount" in r_val_lower or "goods value" in f_name_lower:
+                            extracted_cell_val = nums[3] if len(nums) > 3 else ""
+                        elif "taxable" in r_val_lower:
+                            extracted_cell_val = nums[4] if len(nums) > 4 else ""
+                        else:
+                            extracted_cell_val = rule_val
+
+                        if "=" in str(rule_val):
+                            extracted_cell_val = apply_value_replacement(str(extracted_cell_val), str(rule_val))
+
+                    preview_table_data.append({
+                        "Item Sr No": idx + 1,
+                        "Excel Cell": cell_target,
+                        "Extracted Value": str(extracted_cell_val)
+                    })
+
+                # Streamlit में खूबसूरत टेबल दिखाना
+                st.dataframe(preview_table_data, use_container_width=True)
+                st.success(f"🎉 कुल {len(parsed_items)} आइटम्स की रो-बाय-रो रिपोर्ट सफलतापूर्वक जनरेट हो गई है!")
+            else:
+                st.warning("⚠️ इस PDF में कोई आइटम रो नहीं मिली या पार्सर से डेटा एक्सट्रेक्ट नहीं हुआ।")
