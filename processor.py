@@ -21,10 +21,17 @@ def render_processor():
     st.header("📤 Invoice Processing Zone (Multi-Document)")
     st.caption("इनवॉइस PDF या Excel के साथ-साथ GST Invoice और DEEC Declaration अपलोड करने और पर्टिकुलर सेल/कॉलम में भेजने का ज़ोन।")
     
-    shippers_list = list(st.session_state["shipper_database"].keys())
+    # 🚀 1. शिपर लिस्ट को अल्फाबेटिकल (A से Z) क्रम में सॉर्ट किया गया है
+    shippers_list = sorted(list(st.session_state["shipper_database"].keys()))
     
     if shippers_list:
-        selected_shipper = st.selectbox("किस शिपर का इनवॉइस प्रोसेस करना है?", shippers_list, index=0)
+        # 🚀 2. index=None और placeholder से यह डिफ़ॉल्ट रूप से blank रहेगा और टाइप करके भी खोजा जा सकेगा
+        selected_shipper = st.selectbox(
+            "किस शिपर का इनवॉइस प्रोसेस करना है?", 
+            shippers_list, 
+            index=None, 
+            placeholder="शिपर का नाम टाइप करें या चुनें..."
+        )
         
         if selected_shipper:
             shipper_info = st.session_state["shipper_database"][selected_shipper]
