@@ -7,7 +7,7 @@ from pdf_engine import apply_value_replacement, extract_header_value
 def extract_all_commodities_from_text(pdf_text):
     """
     यह फंक्शन PDF टेक्स्ट से 'Name of Commodity' बॉक्स के अंदर दी गई 
-    सभी कमोडिटी लाइनों को ढूंढ कर उनकी लिस्ट बना लेगा।
+    सभी कमोडिटी लाइनों को ढूंढ कर उनकी लिस्ट बना लेगा (BS कॉलम के लिए)।
     """
     commodities = []
     pattern = r'(\d{8})\s*[:\-]\s*(.+)'
@@ -19,7 +19,7 @@ def extract_all_commodities_from_text(pdf_text):
 
 def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
     """
-    Vapi Welspun Clean Parser: Description (BU के लिए), Pattern Data और BS के लिए बॉक्स कमोडिटीज।
+    Vapi Welspun Clean Parser: टेबल से सीधे BATH MAT, BATH SHEET जैसे नाम निकालेगा।
     """
     parsed_items = []
     
@@ -52,7 +52,7 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                     
                                 dbk_sr = clean_cells[hs_index - 1] if hs_index > 0 else ""
 
-                                # 🚀 अचूक Description एक्सट्रैक्शन (HS Code से ठीक पहले वाला टेक्स्ट)
+                                # 🚀 टेबल से सही Description निकालना (जैसे BATH MAT, BATH SHEET आदि)
                                 description_text = ""
                                 if hs_index > 0:
                                     desc_candidates = []
@@ -60,10 +60,7 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                         cell_val = clean_cells[idx]
                                         if not (idx == hs_index - 1 and cell_val.isdigit()):
                                             desc_candidates.append(cell_val)
-                                    description_text = " ".join(desc_candidates).strip()
-                                    
-                                if not description_text:
-                                    description_text = "COTTON TEXTILE ARTICLE"
+                                    description_text = " ".join(desc_candidates).strip().replace("\n", " ")
 
                                 # पैटर्न्स से वैल्यू ढूंढना
                                 net_wt, qty, rate, amount_usd, taxable_inr, igst_per, igst_amt = "", "", "", "", "", "", ""
@@ -88,7 +85,7 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                 item_dict = {
                                     "dbk_sr": dbk_sr,
                                     "hs_code": hs_code,
-                                    "description_text": description_text, # BU कॉलम के लिए सही नाम
+                                    "description_text": description_text, # यहाँ सही नाम रहेगा
                                     "net_wt": net_wt,
                                     "qty": qty,
                                     "rate": rate,
@@ -172,7 +169,6 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
             rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
             rule_val = str(r_info.get("rule", "")).strip().lower()
             
-            # M को बाईपास रखा है, और BU या Desc के लिए description_text जोड़ दिया है
             if not col_letter or col_letter in ["V", "I", "J", "G", "BR", "BS", "M"]:
                 continue
             
@@ -184,8 +180,8 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
             
             if "hs" in rule_val or "ritc" in rule_val or col_letter == "K":
                 raw_val = item.get("hs_code", "")
-            elif "desc" in rule_val or col_letter in ["BU", "N"]:
-                raw_val = item.get("description_text", "") # 🚀 यहाँ BU कॉलम में सही Description आ जाएगा
+            elif "desc" in rule_val or col_letter == "BU":
+                raw_val = item.get("description_text", "") # 🚀 BU कॉलम में अब BATH MAT, BATH SHEET आदि आ जाएगा
             elif "dbk" in rule_val or col_letter == "S":
                 dbk = item.get("dbk_sr", "")
                 raw_val = f"{dbk}B" if dbk and not dbk.upper().endswith("B") else dbk
