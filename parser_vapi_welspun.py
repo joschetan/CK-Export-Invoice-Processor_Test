@@ -4,12 +4,28 @@ import pdfplumber
 from io import BytesIO
 from pdf_engine import apply_value_replacement, extract_header_value
 
+def extract_all_commodities_from_text(pdf_text):
+    """
+    यह फंक्शन PDF टेक्स्ट से 'Name of Commodity' बॉक्स के अंदर दी गई 
+    सभी कमोडिटी लाइनों (चाहे 2 हों या अधिक) को ढूंढ कर उनकी लिस्ट बना लेगा।
+    """
+    commodities = []
+    pattern = r'(\d{8})\s*[:\-]\s*(.+)'
+    matches = re.findall(pattern, pdf_text)
+    for hsn, desc in matches:
+        full_desc = f"{hsn}: {desc.strip()}"
+        commodities.append(full_desc)
+    return commodities
+
 def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
     """
-    Vapi Welspun Bulletproof Pattern-Based Parser Logic:
-    यह HSN, Weight, Rate और पीछे से (Right-to-Left) कॉलम गिनकर कभी फेल न होने वाला डेटा एक्सट्रैक्ट करता है।
+    Vapi Welspun Bulletproof Pattern-Based Parser Logic with Multi-Commodity Box Support:
+    यह HSN, Weight, Rate और पीछे से कॉलम गिनने के साथ-साथ बॉक्स से सभी कमोडिटी डिस्क्रिप्शन भी निकालता है।
     """
     parsed_items = []
+    
+    # बॉक्स से सभी कमोडिटी डिस्क्रिप्शन पहले ही निकाल कर रख लेना
+    box_commodities = extract_all_commodities_from_text(pdf_text)
     
     cached_bytes = st.session_state.get("cached_pdf_bytes", None)
     if cached_bytes:
@@ -18,7 +34,7 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                 for page in pdf.pages:
                     tables = page.extract_tables()
                     for table in tables:
-                        for row in table:
+                        for row_idx, row in enumerate(table):
                             if row and len(row) >= 5:
                                 # रो के सभी नॉन-एम्प्टी सेल्स की एक साफ़ लिस्ट बनाना
                                 clean_cells = [str(cell).strip() for cell in row if cell is not None and str(cell).strip() != ""]
@@ -41,12 +57,17 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                 # DBK Sr (HS Code से ठीक पहले वाला सेल)
                                 dbk_sr = clean_cells[hs_index - 1] if hs_index > 0 else ""
                                 
-                                # Description
+                                # Description (पहले टेबल से देखना, अगर वहां न मिले तो बॉक्स वाली लिस्ट से उठाना)
                                 desc_parts = []
                                 for idx in range(0, hs_index):
                                     if idx != (hs_index - 1) or not dbk_sr.isdigit():
                                         desc_parts.append(clean_cells[idx])
-                                description_text = " ".join(desc_parts) if desc_parts else "COTTON TEXTILE ARTICLE"
+                                description_text = " ".join(desc_parts) if desc_parts else ""
+                                
+                                if not description_text or len(description_text) < 3:
+                                    # अगर टेबल में डिस्क्रिप्शन न मिले, तो बॉक्स कमोडिटी लिस्ट से मैच करना
+                                    matched_box_desc = next((c for c in box_commodities if hs_code in c), "")
+                                    description_text = matched_box_desc if matched_box_desc else "COTTON TEXTILE ARTICLE"
 
                                 # पैटर्न्स से वैल्यू ढूंढना
                                 net_wt, qty, rate, amount_usd, taxable_inr, igst_per, igst_amt = "", "", "", "", "", "", ""
