@@ -6,8 +6,8 @@ from pdf_engine import apply_value_replacement, extract_header_value
 
 def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
     """
-    Vapi Welspun Pattern-Based Auto-Detection Parser Logic:
-    यह कॉलम इंडेक्स की झंझट खत्म करके सीधे डेटा के पक्के पैटर्न (8-digit HSN, 3-decimal Weight, 5-decimal Rate) से वैल्यू उठाता है।
+    Vapi Welspun Bulletproof Pattern-Based Parser Logic:
+    यह HSN, Weight, Rate और पीछे से (Right-to-Left) कॉलम गिनकर कभी फेल न होने वाला डेटा एक्सट्रैक्ट करता है।
     """
     parsed_items = []
     
@@ -38,20 +38,19 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                 if not hs_code:
                                     continue # अगर 8-digit HSN नहीं मिला तो यह आइटम रो नहीं है
                                     
-                                # DBK Sr (आम तौर पर HS Code से ठीक पहले वाला सेल होता है)
+                                # DBK Sr (HS Code से ठीक पहले वाला सेल)
                                 dbk_sr = clean_cells[hs_index - 1] if hs_index > 0 else ""
                                 
-                                # Description (DBK Sr और HS Code के बीच या उनके आस-पास का टेक्स्ट)
+                                # Description
                                 desc_parts = []
                                 for idx in range(0, hs_index):
                                     if idx != (hs_index - 1) or not dbk_sr.isdigit():
                                         desc_parts.append(clean_cells[idx])
                                 description_text = " ".join(desc_parts) if desc_parts else "COTTON TEXTILE ARTICLE"
 
-                                # बाकी बचे सेल्स से पैटर्न्स ढूंढना
+                                # पैटर्न्स से वैल्यू ढूंढना
                                 net_wt, qty, rate, amount_usd, taxable_inr, igst_per, igst_amt = "", "", "", "", "", "", ""
                                 
-                                rate_index = -1
                                 for idx, cell in enumerate(clean_cells):
                                     clean_c = cell.replace(",", "")
                                     
@@ -63,27 +62,18 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                     # Rate: डेसिमल के बाद हमेशा 5 अंक (जैसे 2.41000)
                                     elif re.fullmatch(r'\d+\.\d{5}', clean_c):
                                         rate = cell
-                                        rate_index = idx
                                         
-                                    # Quantity: जो बड़ा पूर्णांक या संख्या हो (जिसमें डेसिमल न हो या मात्रा हो)
+                                    # Quantity: बड़ा पूर्णांक जो HS Code न हो
                                     elif clean_c.isdigit() and int(clean_c) > 99 and cell != hs_code:
                                         if not qty:
                                             qty = cell
 
-                                # आपके नियम के अनुसार: Rate के बाद के कॉलम सीक्वेंस से उठाना
-                                if rate_index != -1:
-                                    # Rate के बाद वाला अगला सेल Amount USD हो सकता है
-                                    if rate_index + 1 < len(clean_cells):
-                                        amount_usd = clean_cells[rate_index + 1]
-                                    # 2nd column after Rate = Amount in INR (Taxable Value)
-                                    if rate_index + 2 < len(clean_cells):
-                                        taxable_inr = clean_cells[rate_index + 2]
-                                    # 3rd column after Rate = IGST%
-                                    if rate_index + 3 < len(clean_cells):
-                                        igst_per = clean_cells[rate_index + 3]
-                                    # 4th column after Rate = IGST Amount
-                                    if rate_index + 4 < len(clean_cells):
-                                        igst_amt = clean_cells[rate_index + 4]
+                                # 🚀 अचूक लॉजिक: इनवॉइस के आखिरी चारों कॉलम हमेशा दाईं तरफ (Right-to-Left) से फिक्स होते हैं
+                                if len(clean_cells) >= 4:
+                                    igst_amt = clean_cells[-1]        # सबसे आखिरी = IGST Amount
+                                    igst_per = clean_cells[-2]        # पीछे से दूसरा = IGST% (जैसे 5.00)
+                                    taxable_inr = clean_cells[-3]     # पीछे से तीसरा = Amount in INR (Taxable Value)
+                                    amount_usd = clean_cells[-4]      # पीछे से चौथा = Amount USDN
 
                                 item_dict = {
                                     "dbk_sr": dbk_sr,
@@ -109,7 +99,7 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
 
 def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_overall_sr=1, start_excel_row=2, default_invoice_no="", default_invoice_date="", pdf_text="", lut_kws="", paid_kws="", parser_rule=""):
     """
-    Dynamic Excel mapping function using Pattern-Detected item dictionary keys.
+    Dynamic Excel mapping function using Pattern-Detected keys.
     """
     curr_row = start_excel_row
     overall_sr = start_overall_sr
@@ -160,7 +150,7 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
                 else:
                     ws[f"{col_letter}{curr_row}"] = extracted_val if item_idx == 0 else ""
 
-        # 2. Pattern-Driven Item Table Mapping (UI rule ke anusaar key mapping)
+        # 2. Pattern-Driven Item Table Mapping
         for field_name, r_info in item_rules.items():
             col_letter = r_info.get("col", "").strip().upper()
             rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
@@ -175,7 +165,6 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
             cell_ref = f"{col_letter}{curr_row}"
             raw_val = ""
             
-            # UI में यूजर जो भी लिखेगा, उसे डिटेक्टेड पैटर्न कीज़ से मैच करना
             if "hs" in rule_val or "ritc" in rule_val or col_letter == "K":
                 raw_val = item.get("hs_code", "")
             elif "desc" in rule_val or col_letter == "M":
