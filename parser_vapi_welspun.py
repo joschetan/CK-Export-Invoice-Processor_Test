@@ -19,8 +19,8 @@ def extract_all_commodities_from_text(pdf_text):
 
 def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
     """
-    Vapi Welspun Bulletproof Parser: M कॉलम को पूरी तरह UI पर छोड़कर, 
-    केवल पैटर्न-बेस्ड टेबल डेटा और BS के लिए बॉक्स कमोडिटीज एक्सट्रैक्ट करता है.
+    Vapi Welspun Clean Parser: M और N को पूरी तरह UI पर छोड़कर, 
+    केवल बाकि पैटर्न डेटा और BS के लिए बॉक्स कमोडिटीज एक्सट्रैक्ट करता है।
     """
     parsed_items = []
     
@@ -83,7 +83,7 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                     "amount_inr": taxable_inr,
                                     "igst_per": igst_per if igst_per else "5.00",
                                     "igst_amt": igst_amt,
-                                    "box_commodities": box_commodities # BS कॉलम के लिए
+                                    "box_commodities": box_commodities
                                 }
                                 parsed_items.append(item_dict)
         except Exception as e:
@@ -128,11 +128,11 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
         if default_invoice_date and not "ROSC" in str(default_invoice_date):
             ws[f"J{curr_row}"] = default_invoice_date
 
-        # 🚀 BS कॉलम में बॉक्स की सारी कमोडिटीज अपने आप आ जाएंगी (UI नियम की जरूरत नहीं)
+        # BS कॉलम में बॉक्स की सारी कमोडिटीज
         if box_commodities_text:
             ws[f"BS{curr_row}"] = box_commodities_text if item_idx == 0 else ""
 
-        # 1. Header fields mapping (M कॉलम अब पूरी तरह आपके UI रूल्स से चलेगा)
+        # 1. Header fields mapping
         for field_name, r_info in item_rules.items():
             col_letter = r_info.get("col", "").strip().upper()
             rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
@@ -153,13 +153,14 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
                 else:
                     ws[f"{col_letter}{curr_row}"] = extracted_val if item_idx == 0 else ""
 
-        # 2. Pattern-Driven Item Table Mapping
+        # 2. Pattern-Driven Item Table Mapping (M और N को यहाँ से बिल्कुल अलग रखा गया है ताकि UI नियम काम करें)
         for field_name, r_info in item_rules.items():
             col_letter = r_info.get("col", "").strip().upper()
             rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
             rule_val = str(r_info.get("rule", "")).strip().lower()
             
-            if not col_letter or col_letter in ["V", "I", "J", "G", "BR", "BS"]:
+            # यदि कॉलम M या N है तो इसे बाईपास करें ताकि UI का नियम सीधे एक्सेल में चले
+            if not col_letter or col_letter in ["V", "I", "J", "G", "BR", "BS", "M", "N"]:
                 continue
             
             if "extract" in rule_type_raw.lower() or "box" in rule_type_raw.lower() or "header" in rule_type_raw.lower():
@@ -175,8 +176,6 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
                 raw_val = f"{dbk}B" if dbk and not dbk.upper().endswith("B") else dbk
             elif "wt" in rule_val or "weight" in rule_val or col_letter == "AB":
                 raw_val = item.get("net_wt", "")
-            elif "qty" in rule_val or "quantity" in rule_val or col_letter == "N":
-                raw_val = item.get("qty", "")
             elif "rate" in rule_val or col_letter == "P":
                 raw_val = item.get("rate", "")
             elif "amount" in rule_val and "usd" in rule_val or col_letter == "Q":
@@ -188,7 +187,7 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
             elif "igst amount" in rule_val or col_letter == "Y":
                 raw_val = item.get("igst_amt", "")
             else:
-                raw_val = item.get("qty", "")
+                raw_val = ""
 
             if "=" in rule_val:
                 raw_val = apply_value_replacement(str(raw_val), rule_val)
