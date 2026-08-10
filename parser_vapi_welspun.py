@@ -24,7 +24,7 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
     """
     parsed_items = []
     
-    # बॉक्स से सभी कमोडिटी डिस्क्रिप्शन पहले ही निकाल कर रख लेना
+    # बॉक्स से सभी कमोडिटी डिस्क्रिप्शन निकालना
     box_commodities = extract_all_commodities_from_text(pdf_text)
     
     cached_bytes = st.session_state.get("cached_pdf_bytes", None)
@@ -34,7 +34,7 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                 for page in pdf.pages:
                     tables = page.extract_tables()
                     for table in tables:
-                        for row_idx, row in enumerate(table):
+                        for row in table:
                             if row and len(row) >= 5:
                                 # रो के सभी नॉन-एम्प्टी सेल्स की एक साफ़ लिस्ट बनाना
                                 clean_cells = [str(cell).strip() for cell in row if cell is not None and str(cell).strip() != ""]
@@ -57,7 +57,7 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                 # DBK Sr (HS Code से ठीक पहले वाला सेल)
                                 dbk_sr = clean_cells[hs_index - 1] if hs_index > 0 else ""
                                 
-                                # Description (पहले टेबल से देखना, अगर वहां न मिले तो बॉक्स वाली लिस्ट से उठाना)
+                                # Description
                                 desc_parts = []
                                 for idx in range(0, hs_index):
                                     if idx != (hs_index - 1) or not dbk_sr.isdigit():
@@ -65,7 +65,6 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                 description_text = " ".join(desc_parts) if desc_parts else ""
                                 
                                 if not description_text or len(description_text) < 3:
-                                    # अगर टेबल में डिस्क्रिप्शन न मिले, तो बॉक्स कमोडिटी लिस्ट से मैच करना
                                     matched_box_desc = next((c for c in box_commodities if hs_code in c), "")
                                     description_text = matched_box_desc if matched_box_desc else "COTTON TEXTILE ARTICLE"
 
@@ -106,21 +105,22 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                     "amount_usd": amount_usd,
                                     "amount_inr": taxable_inr,
                                     "igst_per": igst_per if igst_per else "5.00",
-                                    "igst_amt": igst_amt
+                                    "igst_amt": igst_amt,
+                                    "box_commodities": box_commodities # सारी कमोडिटीज की लिस्ट प्रिजर्व करना
                                 }
                                 parsed_items.append(item_dict)
         except Exception as e:
             st.error(f"Pattern Parser Error: {str(e)}")
 
     if not parsed_items:
-        parsed_items.append({"dbk_sr": "", "hs_code": "", "description_text": "", "net_wt": "", "qty": "", "rate": "", "amount_usd": "", "amount_inr": "", "igst_per": "5.00", "igst_amt": ""})
+        parsed_items.append({"dbk_sr": "", "hs_code": "", "description_text": "", "net_wt": "", "qty": "", "rate": "", "amount_usd": "", "amount_inr": "", "igst_per": "5.00", "igst_amt": "", "box_commodities": []})
 
     return parsed_items
 
 
 def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_overall_sr=1, start_excel_row=2, default_invoice_no="", default_invoice_date="", pdf_text="", lut_kws="", paid_kws="", parser_rule=""):
     """
-    Dynamic Excel mapping function using Pattern-Detected keys.
+    Dynamic Excel mapping function using Pattern-Detected keys and Multi-Commodity Box Auto-Fill.
     """
     curr_row = start_excel_row
     overall_sr = start_overall_sr
@@ -138,6 +138,11 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
 
     max_rows = len(parsed_items)
 
+    # अगर पहली आइटम डिक्शनरी में बॉक्स कमोडिटीज हैं तो उन्हें BS कॉलम के लिए तैयार करना
+    first_item = parsed_items[0] if parsed_items else {}
+    all_comms = first_item.get("box_commodities", [])
+    box_commodities_text = "\n".join(all_comms) if all_comms else ""
+
     for item_idx in range(max_rows):
         item_sr_no = item_idx + 1
         item = parsed_items[item_idx] if item_idx < len(parsed_items) else {}
@@ -150,11 +155,16 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
         if default_invoice_date and not "ROSC" in str(default_invoice_date):
             ws[f"J{curr_row}"] = default_invoice_date
 
-        # 1. Header fields mapping
+        # 1. Header fields & BS Column (Multi-Commodity Box) mapping
         for field_name, r_info in item_rules.items():
             col_letter = r_info.get("col", "").strip().upper()
             rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
             rule_val = str(r_info.get("rule", "")).strip()
+            
+            # यदि BS कॉलम है तो सारी कमोडिटीज की लिस्ट पहली रो में अपने आप भर जाएगी
+            if col_letter == "BS":
+                ws[f"{col_letter}{curr_row}"] = box_commodities_text if item_idx == 0 else ""
+                continue
             
             if not col_letter or col_letter in ["V", "BR", "BS", "S", "J"]:
                 continue
@@ -214,7 +224,7 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
                 raw_val = apply_value_replacement(str(raw_val), rule_val)
 
             try:
-                if col_letter in ["S", "K", "M"]:
+                if col_letter in ["S", "K", "M", "BS"]:
                     ws[cell_ref] = str(raw_val).replace("\n", " ")
                 else:
                     clean_num = str(raw_val).replace(",", "").replace("\n", "").strip()
