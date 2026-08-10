@@ -7,7 +7,7 @@ from pdf_engine import apply_value_replacement, extract_header_value
 def extract_all_commodities_from_text(pdf_text):
     """
     यह फंक्शन PDF टेक्स्ट से 'Name of Commodity' बॉक्स के अंदर दी गई 
-    सभी कमोडिटी लाइनों को ढूंढ कर उनकी लिस्ट बना लेगा।
+    सभी कमोडिटी लाइनों (चाहे 2 हों या अधिक) को ढूंढ कर उनकी लिस्ट बना लेगा।
     """
     commodities = []
     pattern = r'(\d{8})\s*[:\-]\s*(.+)'
@@ -19,10 +19,12 @@ def extract_all_commodities_from_text(pdf_text):
 
 def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
     """
-    Vapi Welspun Bulletproof Parser: M कॉलम के लिए सही टेबल डिस्क्रिप्शन और BS के लिए बॉक्स कमोडिटीज।
+    Vapi Welspun Bulletproof Pattern-Based Parser Logic with Multi-Commodity Box Support:
+    यह HSN, Weight, Rate और पीछे से कॉलम गिनने के साथ-साथ बॉक्स से सभी कमोडिटी डिस्क्रिप्शन भी निकालता है।
     """
     parsed_items = []
     
+    # बॉक्स से सभी कमोडिटी डिस्क्रिप्शन निकालना
     box_commodities = extract_all_commodities_from_text(pdf_text)
     
     cached_bytes = st.session_state.get("cached_pdf_bytes", None)
@@ -34,11 +36,13 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                     for table in tables:
                         for row in table:
                             if row and len(row) >= 5:
+                                # रो के सभी नॉन-एम्प्टी सेल्स की एक साफ़ लिस्ट बनाना
                                 clean_cells = [str(cell).strip() for cell in row if cell is not None and str(cell).strip() != ""]
                                 
                                 if not clean_cells:
                                     continue
                                     
+                                # 1. HS Code ढूंढना: 8 अंकों का शुद्ध नंबर (बिना डेसिमल या कॉमा के)
                                 hs_code = ""
                                 hs_index = -1
                                 for idx, cell in enumerate(clean_cells):
@@ -48,41 +52,53 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                         break
                                         
                                 if not hs_code:
-                                    continue
+                                    continue # अगर 8-digit HSN नहीं मिला तो यह आइटम रो नहीं है
                                     
+                                # DBK Sr (HS Code से ठीक पहले वाला सेल)
                                 dbk_sr = clean_cells[hs_index - 1] if hs_index > 0 else ""
                                 
-                                # 🚀 M कॉलम के लिए टेबल वाला असली छोटा डिस्क्रिप्शन (जैसे BATH MAT, BATH SHEET)
+                                # Description
                                 desc_parts = []
                                 for idx in range(0, hs_index):
                                     if idx != (hs_index - 1) or not dbk_sr.isdigit():
                                         desc_parts.append(clean_cells[idx])
-                                table_description = " ".join(desc_parts) if desc_parts else "COTTON TEXTILE ARTICLE"
+                                description_text = " ".join(desc_parts) if desc_parts else ""
+                                
+                                if not description_text or len(description_text) < 3:
+                                    matched_box_desc = next((c for c in box_commodities if hs_code in c), "")
+                                    description_text = matched_box_desc if matched_box_desc else "COTTON TEXTILE ARTICLE"
 
                                 # पैटर्न्स से वैल्यू ढूंढना
                                 net_wt, qty, rate, amount_usd, taxable_inr, igst_per, igst_amt = "", "", "", "", "", "", ""
                                 
                                 for idx, cell in enumerate(clean_cells):
                                     clean_c = cell.replace(",", "")
+                                    
+                                    # Net Weight: डेसिमल के बाद ठीक 3 अंक (जैसे 700.876)
                                     if re.fullmatch(r'\d+\.\d{3}', clean_c):
                                         if not net_wt:
                                             net_wt = cell
+                                            
+                                    # Rate: डेसिमल के बाद हमेशा 5 अंक (जैसे 2.41000)
                                     elif re.fullmatch(r'\d+\.\d{5}', clean_c):
                                         rate = cell
+                                        
+                                    # Quantity: बड़ा पूर्णांक जो HS Code न हो
                                     elif clean_c.isdigit() and int(clean_c) > 99 and cell != hs_code:
                                         if not qty:
                                             qty = cell
 
+                                # 🚀 अचूक लॉजिक: इनवॉइस के आखिरी चारों कॉलम हमेशा दाईं तरफ (Right-to-Left) से फिक्स होते हैं
                                 if len(clean_cells) >= 4:
-                                    igst_amt = clean_cells[-1]
-                                    igst_per = clean_cells[-2]
-                                    taxable_inr = clean_cells[-3]
-                                    amount_usd = clean_cells[-4]
+                                    igst_amt = clean_cells[-1]        # सबसे आखिरी = IGST Amount
+                                    igst_per = clean_cells[-2]        # पीछे से दूसरा = IGST% (जैसे 5.00)
+                                    taxable_inr = clean_cells[-3]     # पीछे से तीसरा = Amount in INR (Taxable Value)
+                                    amount_usd = clean_cells[-4]      # पीछे से चौथा = Amount USDN
 
                                 item_dict = {
                                     "dbk_sr": dbk_sr,
                                     "hs_code": hs_code,
-                                    "table_description": table_description, # टेबल का छोटा नाम (M कॉलम के लिए)
+                                    "description_text": description_text,
                                     "net_wt": net_wt,
                                     "qty": qty,
                                     "rate": rate,
@@ -90,19 +106,22 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                     "amount_inr": taxable_inr,
                                     "igst_per": igst_per if igst_per else "5.00",
                                     "igst_amt": igst_amt,
-                                    "box_commodities": box_commodities # बॉक्स की कमोडिटीज (BS कॉलम के लिए)
+                                    "box_commodities": box_commodities # सारी कमोडिटीज की लिस्ट प्रिजर्व करना
                                 }
                                 parsed_items.append(item_dict)
         except Exception as e:
             st.error(f"Pattern Parser Error: {str(e)}")
 
     if not parsed_items:
-        parsed_items.append({"dbk_sr": "", "hs_code": "", "table_description": "", "net_wt": "", "qty": "", "rate": "", "amount_usd": "", "amount_inr": "", "igst_per": "5.00", "igst_amt": "", "box_commodities": []})
+        parsed_items.append({"dbk_sr": "", "hs_code": "", "description_text": "", "net_wt": "", "qty": "", "rate": "", "amount_usd": "", "amount_inr": "", "igst_per": "5.00", "igst_amt": "", "box_commodities": []})
 
     return parsed_items
 
 
 def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_overall_sr=1, start_excel_row=2, default_invoice_no="", default_invoice_date="", pdf_text="", lut_kws="", paid_kws="", parser_rule=""):
+    """
+    Dynamic Excel mapping function using Pattern-Detected keys and Multi-Commodity Box Auto-Fill.
+    """
     curr_row = start_excel_row
     overall_sr = start_overall_sr
     
@@ -119,6 +138,7 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
 
     max_rows = len(parsed_items)
 
+    # अगर पहली आइटम डिक्शनरी में बॉक्स कमोडिटीज हैं तो उन्हें BS कॉलम के लिए तैयार करना
     first_item = parsed_items[0] if parsed_items else {}
     all_comms = first_item.get("box_commodities", [])
     box_commodities_text = "\n".join(all_comms) if all_comms else ""
@@ -135,12 +155,13 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
         if default_invoice_date and not "ROSC" in str(default_invoice_date):
             ws[f"J{curr_row}"] = default_invoice_date
 
-        # 1. Header fields & BS Column Auto-Fill
+        # 1. Header fields & BS Column (Multi-Commodity Box) mapping
         for field_name, r_info in item_rules.items():
             col_letter = r_info.get("col", "").strip().upper()
             rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
             rule_val = str(r_info.get("rule", "")).strip()
             
+            # यदि BS कॉलम है तो सारी कमोडिटीज की लिस्ट पहली रो में अपने आप भर जाएगी
             if col_letter == "BS":
                 ws[f"{col_letter}{curr_row}"] = box_commodities_text if item_idx == 0 else ""
                 continue
@@ -178,7 +199,7 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
             if "hs" in rule_val or "ritc" in rule_val or col_letter == "K":
                 raw_val = item.get("hs_code", "")
             elif "desc" in rule_val or col_letter == "M":
-                raw_val = item.get("table_description", "") # M कॉलम में अब सही छोटा नाम जाएगा
+                raw_val = item.get("description_text", "")
             elif "dbk" in rule_val or col_letter == "S":
                 dbk = item.get("dbk_sr", "")
                 raw_val = f"{dbk}B" if dbk and not dbk.upper().endswith("B") else dbk
