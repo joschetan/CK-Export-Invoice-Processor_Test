@@ -5,10 +5,6 @@ from io import BytesIO
 from pdf_engine import apply_value_replacement, extract_header_value
 
 def extract_all_commodities_from_text(pdf_text):
-    """
-    यह फंक्शन PDF टेक्स्ट से 'Name of Commodity' बॉक्स के अंदर दी गई 
-    सभी कमोडिटी लाइनों को ढूंढ कर उनकी लिस्ट बना लेगा।
-    """
     commodities = []
     pattern = r'(\d{8})\s*[:\-]\s*(.+)'
     matches = re.findall(pattern, pdf_text)
@@ -18,11 +14,7 @@ def extract_all_commodities_from_text(pdf_text):
     return commodities
 
 def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
-    """
-    Vapi Welspun Clean Parser: बिना किसी फर्जी फॉलबैक के सटीक Description और Qty एक्सट्रैक्शन।
-    """
     parsed_items = []
-    
     box_commodities = extract_all_commodities_from_text(pdf_text)
     
     cached_bytes = st.session_state.get("cached_pdf_bytes", None)
@@ -35,7 +27,6 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                         for row in table:
                             if row and len(row) >= 5:
                                 clean_cells = [str(cell).strip() for cell in row if cell is not None and str(cell).strip() != ""]
-                                
                                 if not clean_cells:
                                     continue
                                     
@@ -52,7 +43,6 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                     
                                 dbk_sr = clean_cells[hs_index - 1] if hs_index > 0 else ""
 
-                                # 🚀 अचूक Description एक्सट्रैक्शन (बिना किसी फॉलबैक टेक्स्ट के)
                                 description_text = ""
                                 if hs_index > 0:
                                     desc_candidates = []
@@ -60,9 +50,8 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                         cell_val = clean_cells[idx]
                                         if not (idx == hs_index - 1 and cell_val.isdigit()):
                                             desc_candidates.append(cell_val)
-                                    description_text = " ".join(desc_candidates).strip().replace("\n", " ")
+                                    description_text = " ".join(desc_candidates).strip()
 
-                                # पैटर्न्स से वैल्यू ढूंढना
                                 net_wt, qty, rate, amount_usd, taxable_inr, igst_per, igst_amt = "", "", "", "", "", "", ""
                                 
                                 for idx, cell in enumerate(clean_cells):
@@ -138,7 +127,6 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
         if default_invoice_date and not "ROSC" in str(default_invoice_date):
             ws[f"J{curr_row}"] = default_invoice_date
 
-        # BS कॉलम में बॉक्स की सारी कमोडिटीज
         if box_commodities_text:
             ws[f"BS{curr_row}"] = box_commodities_text if item_idx == 0 else ""
 
@@ -169,7 +157,7 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
             rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
             rule_val = str(r_info.get("rule", "")).strip().lower()
             
-            # M और N को पूरी तरह बाईपास रखा है ताकि Qty और Description अपने UI रूल्स से चलें
+            # M और N को पूरी तरह अलग रखा है ताकि Qty और Description अपने UI रूल्स से चलें
             if not col_letter or col_letter in ["V", "I", "J", "G", "BR", "BS", "M", "N"]:
                 continue
             
