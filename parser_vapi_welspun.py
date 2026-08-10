@@ -19,8 +19,7 @@ def extract_all_commodities_from_text(pdf_text):
 
 def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
     """
-    Vapi Welspun Clean Parser: M और N को पूरी तरह UI पर छोड़कर, 
-    केवल बाकि पैटर्न डेटा और BS के लिए बॉक्स कमोडिटीज एक्सट्रैक्ट करता है।
+    Vapi Welspun Clean Parser: Description (BU के लिए), Pattern Data और BS के लिए बॉक्स कमोडिटीज।
     """
     parsed_items = []
     
@@ -53,6 +52,19 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                     
                                 dbk_sr = clean_cells[hs_index - 1] if hs_index > 0 else ""
 
+                                # 🚀 अचूक Description एक्सट्रैक्शन (HS Code से ठीक पहले वाला टेक्स्ट)
+                                description_text = ""
+                                if hs_index > 0:
+                                    desc_candidates = []
+                                    for idx in range(0, hs_index):
+                                        cell_val = clean_cells[idx]
+                                        if not (idx == hs_index - 1 and cell_val.isdigit()):
+                                            desc_candidates.append(cell_val)
+                                    description_text = " ".join(desc_candidates).strip()
+                                    
+                                if not description_text:
+                                    description_text = "COTTON TEXTILE ARTICLE"
+
                                 # पैटर्न्स से वैल्यू ढूंढना
                                 net_wt, qty, rate, amount_usd, taxable_inr, igst_per, igst_amt = "", "", "", "", "", "", ""
                                 
@@ -76,6 +88,7 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                 item_dict = {
                                     "dbk_sr": dbk_sr,
                                     "hs_code": hs_code,
+                                    "description_text": description_text, # BU कॉलम के लिए सही नाम
                                     "net_wt": net_wt,
                                     "qty": qty,
                                     "rate": rate,
@@ -90,7 +103,7 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
             st.error(f"Pattern Parser Error: {str(e)}")
 
     if not parsed_items:
-        parsed_items.append({"dbk_sr": "", "hs_code": "", "net_wt": "", "qty": "", "rate": "", "amount_usd": "", "amount_inr": "", "igst_per": "5.00", "igst_amt": "", "box_commodities": []})
+        parsed_items.append({"dbk_sr": "", "hs_code": "", "description_text": "", "net_wt": "", "qty": "", "rate": "", "amount_usd": "", "amount_inr": "", "igst_per": "5.00", "igst_amt": "", "box_commodities": []})
 
     return parsed_items
 
@@ -153,14 +166,14 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
                 else:
                     ws[f"{col_letter}{curr_row}"] = extracted_val if item_idx == 0 else ""
 
-        # 2. Pattern-Driven Item Table Mapping (M और N को यहाँ से बिल्कुल अलग रखा गया है ताकि UI नियम काम करें)
+        # 2. Pattern-Driven Item Table Mapping
         for field_name, r_info in item_rules.items():
             col_letter = r_info.get("col", "").strip().upper()
             rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
             rule_val = str(r_info.get("rule", "")).strip().lower()
             
-            # यदि कॉलम M या N है तो इसे बाईपास करें ताकि UI का नियम सीधे एक्सेल में चले
-            if not col_letter or col_letter in ["V", "I", "J", "G", "BR", "BS", "M", "N"]:
+            # M को बाईपास रखा है, और BU या Desc के लिए description_text जोड़ दिया है
+            if not col_letter or col_letter in ["V", "I", "J", "G", "BR", "BS", "M"]:
                 continue
             
             if "extract" in rule_type_raw.lower() or "box" in rule_type_raw.lower() or "header" in rule_type_raw.lower():
@@ -171,11 +184,15 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
             
             if "hs" in rule_val or "ritc" in rule_val or col_letter == "K":
                 raw_val = item.get("hs_code", "")
+            elif "desc" in rule_val or col_letter in ["BU", "N"]:
+                raw_val = item.get("description_text", "") # 🚀 यहाँ BU कॉलम में सही Description आ जाएगा
             elif "dbk" in rule_val or col_letter == "S":
                 dbk = item.get("dbk_sr", "")
                 raw_val = f"{dbk}B" if dbk and not dbk.upper().endswith("B") else dbk
             elif "wt" in rule_val or "weight" in rule_val or col_letter == "AB":
                 raw_val = item.get("net_wt", "")
+            elif "qty" in rule_val or "quantity" in rule_val:
+                raw_val = item.get("qty", "")
             elif "rate" in rule_val or col_letter == "P":
                 raw_val = item.get("rate", "")
             elif "amount" in rule_val and "usd" in rule_val or col_letter == "Q":
@@ -193,7 +210,7 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
                 raw_val = apply_value_replacement(str(raw_val), rule_val)
 
             try:
-                if col_letter in ["S", "K"]:
+                if col_letter in ["S", "K", "BU"]:
                     ws[cell_ref] = str(raw_val).replace("\n", " ")
                 else:
                     clean_num = str(raw_val).replace(",", "").replace("\n", "").strip()
