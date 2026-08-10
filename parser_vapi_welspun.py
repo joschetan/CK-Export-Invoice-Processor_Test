@@ -6,8 +6,8 @@ from pdf_engine import apply_value_replacement, extract_header_value
 
 def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
     """
-    Vapi Welspun Dedicated Item Table Parser Logic with Live Index Debugging:
-    यह PDF की टेबल से कॉलम्स को इंडेक्स के रूप में कैप्चर करेगा और टर्मिनल पर प्रिंट भी करेगा।
+    Vapi Welspun Pattern-Based Auto-Detection Parser Logic:
+    यह कॉलम इंडेक्स की झंझट खत्म करके सीधे डेटा के पक्के पैटर्न (8-digit HSN, 3-decimal Weight, 5-decimal Rate) से वैल्यू उठाता है।
     """
     parsed_items = []
     
@@ -18,33 +18,98 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                 for page in pdf.pages:
                     tables = page.extract_tables()
                     for table in tables:
-                        for row_idx, row in enumerate(table):
+                        for row in table:
                             if row and len(row) >= 5:
-                                # 🔍 डिबगिंग के लिए कंसोल पर हर रो और उसका इंडेक्स प्रिंट करना
-                                print(f"--- ROW {row_idx} (Total Cols: {len(row)}) ---")
-                                for col_i, val in enumerate(row):
-                                    print(f"  Index [{col_i}] = {repr(val)}")
+                                # रो के सभी नॉन-एम्प्टी सेल्स की एक साफ़ लिस्ट बनाना
+                                clean_cells = [str(cell).strip() for cell in row if cell is not None and str(cell).strip() != ""]
+                                
+                                if not clean_cells:
+                                    continue
+                                    
+                                # 1. HS Code ढूंढना: 8 अंकों का शुद्ध नंबर (बिना डेसिमल या कॉमा के)
+                                hs_code = ""
+                                hs_index = -1
+                                for idx, cell in enumerate(clean_cells):
+                                    if re.fullmatch(r'\d{8}', cell.replace(",", "")):
+                                        hs_code = cell
+                                        hs_index = idx
+                                        break
+                                        
+                                if not hs_code:
+                                    continue # अगर 8-digit HSN नहीं मिला तो यह आइटम रो नहीं है
+                                    
+                                # DBK Sr (आम तौर पर HS Code से ठीक पहले वाला सेल होता है)
+                                dbk_sr = clean_cells[hs_index - 1] if hs_index > 0 else ""
+                                
+                                # Description (DBK Sr और HS Code के बीच या उनके आस-पास का टेक्स्ट)
+                                desc_parts = []
+                                for idx in range(0, hs_index):
+                                    if idx != (hs_index - 1) or not dbk_sr.isdigit():
+                                        desc_parts.append(clean_cells[idx])
+                                description_text = " ".join(desc_parts) if desc_parts else "COTTON TEXTILE ARTICLE"
 
-                                # चेक करें कि क्या यह वैलिड आइटम रो है (दूसरा कॉलम 8-digit HSN हो)
-                                col2_text = str(row[1]).strip() if len(row) > 1 and row[1] else ""
-                                if re.search(r'^\d{8}$', col2_text):
-                                    item_dict = {f"col_{i}": (str(row[i]).strip() if i < len(row) and row[i] else "") for i in range(len(row))}
-                                    parsed_items.append(item_dict)
+                                # बाकी बचे सेल्स से पैटर्न्स ढूंढना
+                                net_wt, qty, rate, amount_usd, taxable_inr, igst_per, igst_amt = "", "", "", "", "", "", ""
+                                
+                                rate_index = -1
+                                for idx, cell in enumerate(clean_cells):
+                                    clean_c = cell.replace(",", "")
+                                    
+                                    # Net Weight: डेसिमल के बाद ठीक 3 अंक (जैसे 700.876)
+                                    if re.fullmatch(r'\d+\.\d{3}', clean_c):
+                                        if not net_wt:
+                                            net_wt = cell
+                                            
+                                    # Rate: डेसिमल के बाद हमेशा 5 अंक (जैसे 2.41000)
+                                    elif re.fullmatch(r'\d+\.\d{5}', clean_c):
+                                        rate = cell
+                                        rate_index = idx
+                                        
+                                    # Quantity: जो बड़ा पूर्णांक या संख्या हो (जिसमें डेसिमल न हो या मात्रा हो)
+                                    elif clean_c.isdigit() and int(clean_c) > 99 and cell != hs_code:
+                                        if not qty:
+                                            qty = cell
+
+                                # आपके नियम के अनुसार: Rate के बाद के कॉलम सीक्वेंस से उठाना
+                                if rate_index != -1:
+                                    # Rate के बाद वाला अगला सेल Amount USD हो सकता है
+                                    if rate_index + 1 < len(clean_cells):
+                                        amount_usd = clean_cells[rate_index + 1]
+                                    # 2nd column after Rate = Amount in INR (Taxable Value)
+                                    if rate_index + 2 < len(clean_cells):
+                                        taxable_inr = clean_cells[rate_index + 2]
+                                    # 3rd column after Rate = IGST%
+                                    if rate_index + 3 < len(clean_cells):
+                                        igst_per = clean_cells[rate_index + 3]
+                                    # 4th column after Rate = IGST Amount
+                                    if rate_index + 4 < len(clean_cells):
+                                        igst_amt = clean_cells[rate_index + 4]
+
+                                item_dict = {
+                                    "dbk_sr": dbk_sr,
+                                    "hs_code": hs_code,
+                                    "description_text": description_text,
+                                    "net_wt": net_wt,
+                                    "qty": qty,
+                                    "rate": rate,
+                                    "amount_usd": amount_usd,
+                                    "amount_inr": taxable_inr,
+                                    "igst_per": igst_per if igst_per else "5.00",
+                                    "igst_amt": igst_amt
+                                }
+                                parsed_items.append(item_dict)
         except Exception as e:
-            st.error(f"Table Extraction Error: {str(e)}")
+            st.error(f"Pattern Parser Error: {str(e)}")
 
-    # यदि नेटिव टेबल से न मिले तो खाली डिक्शनरी ताकि ऐप क्रैश न हो
     if not parsed_items:
-        parsed_items.append({f"col_{i}": "" for i in range(20)})
+        parsed_items.append({"dbk_sr": "", "hs_code": "", "description_text": "", "net_wt": "", "qty": "", "rate": "", "amount_usd": "", "amount_inr": "", "igst_per": "5.00", "igst_amt": ""})
 
     return parsed_items
 
 
 def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_overall_sr=1, start_excel_row=2, default_invoice_no="", default_invoice_date="", pdf_text="", lut_kws="", paid_kws="", parser_rule=""):
     """
-    Dynamic Excel mapping function:
-    1. अगर यूजर UI में नंबर (0, 1, 2...) डालेगा -> Left to Right (A to Z) काउंट होगा।
-    2. अगर यूजर UI में लेटर (A, B, C... या a, b, c) डालेगा -> Right to Left (Z to A) उल्टा काउंट होगा।
+    Dynamic Excel mapping function using Pattern-Detected item dictionary keys.
     """
     curr_row = start_excel_row
     overall_sr = start_overall_sr
@@ -74,7 +139,7 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
         if default_invoice_date and not "ROSC" in str(default_invoice_date):
             ws[f"J{curr_row}"] = default_invoice_date
 
-        # 1. Consignee / Box / Header fields mapping
+        # 1. Header fields mapping
         for field_name, r_info in item_rules.items():
             col_letter = r_info.get("col", "").strip().upper()
             rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
@@ -95,11 +160,11 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
                 else:
                     ws[f"{col_letter}{curr_row}"] = extracted_val if item_idx == 0 else ""
 
-        # 2. 100% डायनेमिक UI-Driven Item Table Mapping (Dual Mode: A to Z & Z to A)
+        # 2. Pattern-Driven Item Table Mapping (UI rule ke anusaar key mapping)
         for field_name, r_info in item_rules.items():
             col_letter = r_info.get("col", "").strip().upper()
             rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
-            rule_val = str(r_info.get("rule", "")).strip()
+            rule_val = str(r_info.get("rule", "")).strip().lower()
             
             if not col_letter or col_letter in ["V", "I", "J", "G", "BR", "BS"]:
                 continue
@@ -110,44 +175,30 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
             cell_ref = f"{col_letter}{curr_row}"
             raw_val = ""
             
-            rule_val_lower = rule_val.lower()
-            clean_rule_val = rule_val_lower.replace("col_", "").strip()
-            
-            # 🚀 MODE 1: नंबर दिया गया है (0, 1, 2...) -> Left to Right (A to Z काउंट)
-            if clean_rule_val.isdigit():
-                col_idx = int(clean_rule_val)
-                col_key = f"col_{col_idx}"
-                raw_val = item.get(col_key, "")
-                
-            # 🚀 MODE 2: सिंगल अल्फाबेट दिया गया है (A, B, C... / a, b, c...) -> Right to Left (Z to A उलटा काउंट)
-            elif clean_rule_val.isalpha() and len(clean_rule_val) == 1:
-                # a/A -> सबसे आखिरी कॉलम, b/B -> सेकंड लास्ट कॉलम, c/C -> थर्ड लास्ट कॉलम
-                char_offset = ord(clean_rule_val) - ord('a')
-                
-                # टेबल में कुल कॉलम्स की गिनती
-                total_cols = len([k for k in item.keys() if k.startswith("col_")])
-                if total_cols > 0:
-                    target_idx = max(0, total_cols - 1 - char_offset)
-                    raw_val = item.get(f"col_{target_idx}", "")
-                else:
-                    raw_val = ""
-                    
-            # 🚀 MODE 3: टेक्स्ट/कीवर्ड मैपिंग (जैसे hs, qty, rate आदि)
+            # UI में यूजर जो भी लिखेगा, उसे डिटेक्टेड पैटर्न कीज़ से मैच करना
+            if "hs" in rule_val or "ritc" in rule_val or col_letter == "K":
+                raw_val = item.get("hs_code", "")
+            elif "desc" in rule_val or col_letter == "M":
+                raw_val = item.get("description_text", "")
+            elif "dbk" in rule_val or col_letter == "S":
+                dbk = item.get("dbk_sr", "")
+                raw_val = f"{dbk}B" if dbk and not dbk.upper().endswith("B") else dbk
+            elif "wt" in rule_val or "weight" in rule_val or col_letter == "AB":
+                raw_val = item.get("net_wt", "")
+            elif "qty" in rule_val or "quantity" in rule_val or col_letter == "N":
+                raw_val = item.get("qty", "")
+            elif "rate" in rule_val or col_letter == "P":
+                raw_val = item.get("rate", "")
+            elif "amount" in rule_val and "usd" in rule_val or col_letter == "Q":
+                raw_val = item.get("amount_usd", "")
+            elif "taxable" in rule_val or "inr" in rule_val or col_letter == "W":
+                raw_val = item.get("amount_inr", "")
+            elif "igst%" in rule_val or "igst per" in rule_val or col_letter == "X":
+                raw_val = item.get("igst_per", "5.00")
+            elif "igst amount" in rule_val or col_letter == "Y":
+                raw_val = item.get("igst_amt", "")
             else:
-                if "hs" in rule_val_lower or "ritc" in rule_val_lower:
-                    raw_val = item.get("col_1", "")
-                elif "desc" in rule_val_lower:
-                    raw_val = item.get("col_2", "")
-                elif "weight" in rule_val_lower or "wt" in rule_val_lower:
-                    raw_val = item.get("col_5", "")
-                elif "qty" in rule_val_lower or "quantity" in rule_val_lower:
-                    raw_val = item.get("col_6", "")
-                elif "rate" in rule_val_lower:
-                    raw_val = item.get("col_7", "")
-                elif "amount" in rule_val_lower or "goods value" in rule_val_lower:
-                    raw_val = item.get("col_8", "")
-                else:
-                    raw_val = ""
+                raw_val = item.get("qty", "")
 
             if "=" in rule_val:
                 raw_val = apply_value_replacement(str(raw_val), rule_val)
