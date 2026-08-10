@@ -42,9 +42,9 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
 
 def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr_no=1, start_overall_sr=1, start_excel_row=2, default_invoice_no="", default_invoice_date="", pdf_text="", lut_kws="", paid_kws="", parser_rule=""):
     """
-    Dynamic Excel mapping function: 
-    यह पूरी तरह UI के भरोसे है। UI में यूजर जो कॉलम नंबर (0 से आगे) रूल में डालेगा, 
-    डेटा बिना किसी हार्ड-कोडिंग के सीधे उस एक्सेल कॉलम में चला जाएगा।
+    Dynamic Excel mapping function:
+    1. अगर यूजर UI में नंबर (0, 1, 2...) डालेगा -> Left to Right (A to Z) काउंट होगा।
+    2. अगर यूजर UI में लेटर (A, B, C... या a, b, c) डालेगा -> Right to Left (Z to A) उल्टा काउंट होगा।
     """
     curr_row = start_excel_row
     overall_sr = start_overall_sr
@@ -95,11 +95,11 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
                 else:
                     ws[f"{col_letter}{curr_row}"] = extracted_val if item_idx == 0 else ""
 
-        # 2. 100% डायनेमिक UI-Driven Item Table Mapping
+        # 2. 100% डायनेमिक UI-Driven Item Table Mapping (Dual Mode: A to Z & Z to A)
         for field_name, r_info in item_rules.items():
             col_letter = r_info.get("col", "").strip().upper()
             rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
-            rule_val = str(r_info.get("rule", "")).strip().lower()
+            rule_val = str(r_info.get("rule", "")).strip()
             
             if not col_letter or col_letter in ["V", "I", "J", "G", "BR", "BS"]:
                 continue
@@ -110,26 +110,44 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
             cell_ref = f"{col_letter}{curr_row}"
             raw_val = ""
             
-            # 🚀 UI में यूजर जो नंबर (जैसे 0, 1, 2... या col_0) डालेगा, उसी के अनुसार डेटा उठेगा
-            clean_rule_val = rule_val.replace("col_", "").strip()
+            rule_val_lower = rule_val.lower()
+            clean_rule_val = rule_val_lower.replace("col_", "").strip()
+            
+            # 🚀 MODE 1: नंबर दिया गया है (0, 1, 2...) -> Left to Right (A to Z काउंट)
             if clean_rule_val.isdigit():
-                col_key = f"col_{clean_rule_val}"
+                col_idx = int(clean_rule_val)
+                col_key = f"col_{col_idx}"
                 raw_val = item.get(col_key, "")
+                
+            # 🚀 MODE 2: सिंगल अल्फाबेट दिया गया है (A, B, C... / a, b, c...) -> Right to Left (Z to A उलटा काउंट)
+            elif clean_rule_val.isalpha() and len(clean_rule_val) == 1:
+                # a/A -> सबसे आखिरी कॉलम, b/B -> सेकंड लास्ट कॉलम, c/C -> थर्ड लास्ट कॉलम
+                char_offset = ord(clean_rule_val) - ord('a')
+                
+                # टेबल में कुल कॉलम्स की गिनती
+                total_cols = len([k for k in item.keys() if k.startswith("col_")])
+                if total_cols > 0:
+                    target_idx = max(0, total_cols - 1 - char_offset)
+                    raw_val = item.get(f"col_{target_idx}", "")
+                else:
+                    raw_val = ""
+                    
+            # 🚀 MODE 3: टेक्स्ट/कीवर्ड मैपिंग (जैसे hs, qty, rate आदि)
             else:
-                if "hs" in rule_val or "ritc" in rule_val:
+                if "hs" in rule_val_lower or "ritc" in rule_val_lower:
                     raw_val = item.get("col_1", "")
-                elif "desc" in rule_val:
+                elif "desc" in rule_val_lower:
                     raw_val = item.get("col_2", "")
-                elif "weight" in rule_val or "wt" in rule_val:
+                elif "weight" in rule_val_lower or "wt" in rule_val_lower:
                     raw_val = item.get("col_5", "")
-                elif "qty" in rule_val or "quantity" in rule_val:
+                elif "qty" in rule_val_lower or "quantity" in rule_val_lower:
                     raw_val = item.get("col_6", "")
-                elif "rate" in rule_val:
+                elif "rate" in rule_val_lower:
                     raw_val = item.get("col_7", "")
-                elif "amount" in rule_val or "goods value" in rule_val:
+                elif "amount" in rule_val_lower or "goods value" in rule_val_lower:
                     raw_val = item.get("col_8", "")
                 else:
-                    raw_val = item.get("col_0", "")
+                    raw_val = ""
 
             if "=" in rule_val:
                 raw_val = apply_value_replacement(str(raw_val), rule_val)
