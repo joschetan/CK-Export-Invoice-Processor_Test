@@ -130,7 +130,7 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
             ws[f"J{curr_row}"] = default_invoice_date
 
         if box_commodities_text:
-            ws[f"BS{curr_row}"] = box_commodities_text if item_idx == 0 else {}
+            ws[f"BS{curr_row}"] = box_commodities_text if item_idx == 0 else ""
 
         # 1. Header fields mapping
         for field_name, r_info in item_rules.items():
