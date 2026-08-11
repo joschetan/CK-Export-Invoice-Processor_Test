@@ -128,13 +128,13 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
         if default_invoice_date and not "ROSC" in str(default_invoice_date):
             ws[f"J{curr_row}"] = default_invoice_date
 
-        # 🚀 हर रो (Row) में अलग-अलग कमोडिटी भेजने का लॉजिक
+        # 🚀 डुप्लीकेट रोकने का अचूक लॉजिक (जितनी कमोडिटी उतनी ही रो, बाकी खाली)
         if all_comms:
             cell_ref_bs = f"BS{curr_row}"
             if item_idx < len(all_comms):
                 ws[cell_ref_bs] = all_comms[item_idx]
             else:
-                ws[cell_ref_bs] = all_comms[-1]
+                ws[cell_ref_bs] = "" # कमोडिटी खत्म होने पर आगे की रो खाली रहेंगी
             ws[cell_ref_bs].alignment = Alignment(wrap_text=True)
 
         # 1. Header fields mapping
