@@ -71,7 +71,9 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                     taxable_inr = clean_cells[-3]
                                     amount_usd = clean_cells[-4]
 
-                                item_dict = {
+                                # रो के सभी इंडेक्स भी डिक्शनरी में रखना ताकि नंबर रूल (जैसे 8) काम कर सके
+                                item_dict = {f"col_{i}": (str(row[i]).strip() if i < len(row) and row[i] else "") for i in range(len(row))}
+                                item_dict.update({
                                     "dbk_sr": dbk_sr,
                                     "hs_code": hs_code,
                                     "description_text": description_text,
@@ -83,7 +85,7 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                     "igst_per": igst_per if igst_per else "5.00",
                                     "igst_amt": igst_amt,
                                     "box_commodities": box_commodities
-                                }
+                                })
                                 parsed_items.append(item_dict)
         except Exception as e:
             st.error(f"Pattern Parser Error: {str(e)}")
@@ -128,7 +130,7 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
             ws[f"J{curr_row}"] = default_invoice_date
 
         if box_commodities_text:
-            ws[f"BS{curr_row}"] = box_commodities_text if item_idx == 0 else ""
+            ws[f"BS{curr_row}"] = box_commodities_text if item_idx == 0 else {}
 
         # 1. Header fields mapping
         for field_name, r_info in item_rules.items():
@@ -151,14 +153,15 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
                 else:
                     ws[f"{col_letter}{curr_row}"] = extracted_val if item_idx == 0 else ""
 
-        # 2. Pattern-Driven Item Table Mapping
+        # 2. Pattern-Driven & Index-Driven Item Table Mapping
         for field_name, r_info in item_rules.items():
             col_letter = r_info.get("col", "").strip().upper()
             rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
-            rule_val = str(r_info.get("rule", "")).strip().lower()
+            rule_val = str(r_info.get("rule", "")).strip()
+            rule_val_lower = rule_val.lower()
             
-            # M और N को पूरी तरह अलग रखा है ताकि Qty और Description अपने UI रूल्स से चलें
-            if not col_letter or col_letter in ["V", "I", "J", "G", "BR", "BS", "M", "N"]:
+            # अब सिर्फ M को छोड़ा है, N कॉलम का नंबर इंडेक्स नियम अब चालू है[cite: 7]
+            if not col_letter or col_letter in ["V", "I", "J", "G", "BR", "BS", "M"]:
                 continue
             
             if "extract" in rule_type_raw.lower() or "box" in rule_type_raw.lower() or "header" in rule_type_raw.lower():
@@ -167,26 +170,31 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
             cell_ref = f"{col_letter}{curr_row}"
             raw_val = ""
             
-            if "hs" in rule_val or "ritc" in rule_val or col_letter == "K":
+            # 🚀 यदि यूजर ने रूल में नंबर (जैसे 8) दिया है, तो सीधे उस कॉलम इंडेक्स से वैल्यू उठाओ[cite: 7]
+            clean_rule_val = rule_val_lower.replace("col_", "").strip()
+            if clean_rule_val.isdigit():
+                col_idx = int(clean_rule_val)
+                raw_val = item.get(f"col_{col_idx}", "")
+            elif "hs" in rule_val_lower or "ritc" in rule_val_lower or col_letter == "K":
                 raw_val = item.get("hs_code", "")
-            elif "desc" in rule_val or col_letter == "BU":
+            elif "desc" in rule_val_lower or col_letter == "BU":
                 raw_val = item.get("description_text", "")
-            elif "dbk" in rule_val or col_letter == "S":
+            elif "dbk" in rule_val_lower or col_letter == "S":
                 dbk = item.get("dbk_sr", "")
                 raw_val = f"{dbk}B" if dbk and not dbk.upper().endswith("B") else dbk
-            elif "wt" in rule_val or "weight" in rule_val or col_letter == "AB":
+            elif "wt" in rule_val_lower or "weight" in rule_val_lower or col_letter == "AB":
                 raw_val = item.get("net_wt", "")
-            elif "qty" in rule_val or "quantity" in rule_val:
+            elif "qty" in rule_val_lower or "quantity" in rule_val_lower or col_letter == "N":
                 raw_val = item.get("qty", "")
-            elif "rate" in rule_val or col_letter == "P":
+            elif "rate" in rule_val_lower or col_letter == "P":
                 raw_val = item.get("rate", "")
-            elif "amount" in rule_val and "usd" in rule_val or col_letter == "Q":
+            elif "amount" in rule_val_lower and "usd" in rule_val_lower or col_letter == "Q":
                 raw_val = item.get("amount_usd", "")
-            elif "taxable" in rule_val or "inr" in rule_val or col_letter == "W":
+            elif "taxable" in rule_val_lower or "inr" in rule_val_lower or col_letter == "W":
                 raw_val = item.get("amount_inr", "")
-            elif "igst%" in rule_val or "igst per" in rule_val or col_letter == "X":
+            elif "igst%" in rule_val_lower or "igst per" in rule_val_lower or col_letter == "X":
                 raw_val = item.get("igst_per", "5.00")
-            elif "igst amount" in rule_val or col_letter == "Y":
+            elif "igst amount" in rule_val_lower or col_letter == "Y":
                 raw_val = item.get("igst_amt", "")
             else:
                 raw_val = ""
