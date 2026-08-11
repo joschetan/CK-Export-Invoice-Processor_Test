@@ -2,6 +2,7 @@ import re
 import streamlit as st
 import pdfplumber
 from io import BytesIO
+from openpyxl.styles import Alignment
 from pdf_engine import apply_value_replacement, extract_header_value
 
 def extract_all_commodities_from_text(pdf_text):
@@ -71,7 +72,6 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                     taxable_inr = clean_cells[-3]
                                     amount_usd = clean_cells[-4]
 
-                                # रो के सभी इंडेक्स भी डिक्शनरी में रखना ताकि नंबर रूल (जैसे 8) काम कर सके
                                 item_dict = {f"col_{i}": (str(row[i]).strip() if i < len(row) and row[i] else "") for i in range(len(row))}
                                 item_dict.update({
                                     "dbk_sr": dbk_sr,
@@ -115,6 +115,7 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
 
     first_item = parsed_items[0] if parsed_items else {}
     all_comms = first_item.get("box_commodities", [])
+    # 🚀 हर कमोडिटी को बिल्कुल अलग-अलग नई लाइन (Newline) पर जोड़ना
     box_commodities_text = "\n".join(all_comms) if all_comms else ""
 
     for item_idx in range(max_rows):
@@ -130,7 +131,9 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
             ws[f"J{curr_row}"] = default_invoice_date
 
         if box_commodities_text:
-            ws[f"BS{curr_row}"] = box_commodities_text if item_idx == 0 else ""
+            cell_ref_bs = f"BS{curr_row}"
+            ws[cell_ref_bs] = box_commodities_text if item_idx == 0 else ""
+            ws[cell_ref_bs].alignment = Alignment(wrap_text=True) # 🚀 मल्टी-लाइन को एक्सेल में सही दिखने के लिए Wrap Text एनेबल करना
 
         # 1. Header fields mapping
         for field_name, r_info in item_rules.items():
@@ -160,7 +163,6 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
             rule_val = str(r_info.get("rule", "")).strip()
             rule_val_lower = rule_val.lower()
             
-            # अब सिर्फ M को छोड़ा है, N कॉलम का नंबर इंडेक्स नियम अब चालू है[cite: 7]
             if not col_letter or col_letter in ["V", "I", "J", "G", "BR", "BS", "M"]:
                 continue
             
@@ -170,7 +172,6 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
             cell_ref = f"{col_letter}{curr_row}"
             raw_val = ""
             
-            # 🚀 यदि यूजर ने रूल में नंबर (जैसे 8) दिया है, तो सीधे उस कॉलम इंडेक्स से वैल्यू उठाओ[cite: 7]
             clean_rule_val = rule_val_lower.replace("col_", "").strip()
             if clean_rule_val.isdigit():
                 col_idx = int(clean_rule_val)
