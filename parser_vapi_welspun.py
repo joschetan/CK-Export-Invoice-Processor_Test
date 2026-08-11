@@ -115,8 +115,6 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
 
     first_item = parsed_items[0] if parsed_items else {}
     all_comms = first_item.get("box_commodities", [])
-    # 🚀 हर कमोडिटी को बिल्कुल अलग-अलग नई लाइन (Newline) पर जोड़ना
-    box_commodities_text = "\n".join(all_comms) if all_comms else ""
 
     for item_idx in range(max_rows):
         item_sr_no = item_idx + 1
@@ -130,10 +128,14 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
         if default_invoice_date and not "ROSC" in str(default_invoice_date):
             ws[f"J{curr_row}"] = default_invoice_date
 
-        if box_commodities_text:
+        # 🚀 हर रो (Row) में अलग-अलग कमोडिटी भेजने का लॉजिक
+        if all_comms:
             cell_ref_bs = f"BS{curr_row}"
-            ws[cell_ref_bs] = box_commodities_text if item_idx == 0 else ""
-            ws[cell_ref_bs].alignment = Alignment(wrap_text=True) # 🚀 मल्टी-लाइन को एक्सेल में सही दिखने के लिए Wrap Text एनेबल करना
+            if item_idx < len(all_comms):
+                ws[cell_ref_bs] = all_comms[item_idx]
+            else:
+                ws[cell_ref_bs] = all_comms[-1]
+            ws[cell_ref_bs].alignment = Alignment(wrap_text=True)
 
         # 1. Header fields mapping
         for field_name, r_info in item_rules.items():
