@@ -3,6 +3,7 @@ import base64
 import pdfplumber
 import os
 import re
+import io
 from io import BytesIO
 
 from pdf_engine import extract_header_value, detect_igst_status
