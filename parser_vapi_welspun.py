@@ -22,7 +22,6 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
     if cached_bytes:
         try:
             with pdfplumber.open(BytesIO(cached_bytes)) as pdf:
-                # 🚀 मल्टी-पेज फिक्स: अब यह 1st और 2nd दोनों पेजेस की टेबल को एक-एक करके पढ़ेगा[cite: 10]
                 for page in pdf.pages:
                     tables = page.extract_tables()
                     for table in tables:
@@ -54,17 +53,19 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                             desc_candidates.append(cell_val)
                                     description_text = " ".join(desc_candidates).strip()
 
+                                # 🚀 पैटर्न-बेस्ड सटीक वैल्यू एक्सट्रैक्शन (कॉलम आगे-पीछे होने या Size कॉलम होने पर भी कभी गलत नहीं होगा)
                                 net_wt, qty, rate, amount_usd, taxable_inr, igst_per, igst_amt = "", "", "", "", "", "", ""
                                 
-                                for idx, cell in enumerate(clean_cells):
-                                    clean_c = cell.replace(",", "")
-                                    if re.fullmatch(r'\d+\.\d{3}', clean_c):
+                                for cell in clean_cells:
+                                    clean_c = cell.replace(",", "").strip()
+                                    if re.fullmatch(r'\d+\.\d{5}', clean_c):
+                                        if not rate:
+                                            rate = cell
+                                    elif re.fullmatch(r'\d+\.\d{3}', clean_c):
                                         if not net_wt:
                                             net_wt = cell
-                                    elif re.fullmatch(r'\d+\.\d{5}', clean_c):
-                                        rate = cell
-                                    elif clean_c.isdigit() and int(clean_c) > 99 and cell != hs_code:
-                                        if not qty:
+                                    elif clean_c.isdigit() and int(clean_c) > 0 and cell != hs_code and cell != dbk_sr:
+                                        if int(clean_c) > 10 and not qty:
                                             qty = cell
 
                                 if len(clean_cells) >= 4:
