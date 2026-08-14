@@ -26,7 +26,7 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                     tables = page.extract_tables()
                     for table in tables:
                         for row in table:
-                            if row and len(row) >= 3:
+                            if row and len(row) >= 5:
                                 clean_cells = [str(cell).strip() for cell in row if cell is not None and str(cell).strip() != ""]
                                 if not clean_cells:
                                     continue
@@ -53,26 +53,31 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                             desc_candidates.append(cell_val)
                                     description_text = " ".join(desc_candidates).strip()
 
-                                # 🚀 पैटर्न-बेस्ड सटीक वैल्यू एक्सट्रैक्शन (कॉलम आगे-पीछे होने या Size कॉलम होने पर भी कभी गलत नहीं होगा)
+                                # 🚀 रिवर्स और पैटर्न-बेस्ड अचूक एक्सट्रैक्शन (SIZE कॉलम होने या न होने पर भी 100% सटीक)
                                 net_wt, qty, rate, amount_usd, taxable_inr, igst_per, igst_amt = "", "", "", "", "", "", ""
                                 
-                                for cell in clean_cells:
-                                    clean_c = cell.replace(",", "").strip()
-                                    if re.fullmatch(r'\d+\.\d{5}', clean_c):
-                                        if not rate:
-                                            rate = cell
-                                    elif re.fullmatch(r'\d+\.\d{3}', clean_c):
-                                        if not net_wt:
-                                            net_wt = cell
-                                    elif clean_c.isdigit() and int(clean_c) > 0 and cell != hs_code and cell != dbk_sr:
-                                        if int(clean_c) > 10 and not qty:
-                                            qty = cell
-
-                                if len(clean_cells) >= 4:
+                                # पीछे से फिक्स कॉलम उठाना (IGST Amount से उल्टे क्रम में)
+                                if len(clean_cells) >= 7:
                                     igst_amt = clean_cells[-1]
                                     igst_per = clean_cells[-2]
                                     taxable_inr = clean_cells[-3]
                                     amount_usd = clean_cells[-4]
+
+                                # बीच के आंकड़े (Rate, Net Wt, Qty) पैटर्न से ढूँढना
+                                for cell in clean_cells:
+                                    clean_c = cell.replace(",", "").strip()
+                                    # Rate: 5 डेसिमल वाला नंबर (उदा: 3.07000)
+                                    if re.fullmatch(r'\d+\.\d{5}', clean_c):
+                                        if not rate:
+                                            rate = cell
+                                    # Net Wt: 3 डेसिमल वाला वजन (उदा: 146.880)
+                                    elif re.fullmatch(r'\d+\.\d{3}', clean_c):
+                                        if not net_wt:
+                                            net_wt = cell
+                                    # Qty: पूर्णांक (Integer) जो HSN या DBK Sr न हो और 0 से बड़ा हो
+                                    elif clean_c.isdigit() and int(clean_c) > 0 and cell != hs_code and cell != dbk_sr:
+                                        if int(clean_c) > 0 and not qty:
+                                            qty = cell
 
                                 item_dict = {f"col_{i}": (str(row[i]).strip() if i < len(row) and row[i] else "") for i in range(len(row))}
                                 item_dict.update({
