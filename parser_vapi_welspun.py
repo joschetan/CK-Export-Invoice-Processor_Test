@@ -22,11 +22,12 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
     if cached_bytes:
         try:
             with pdfplumber.open(BytesIO(cached_bytes)) as pdf:
+                # 🚀 मल्टी-पेज फिक्स: अब यह 1st और 2nd दोनों पेजेस की टेबल को एक-एक करके पढ़ेगा[cite: 10]
                 for page in pdf.pages:
                     tables = page.extract_tables()
                     for table in tables:
                         for row in table:
-                            if row and len(row) >= 5:
+                            if row and len(row) >= 3:
                                 clean_cells = [str(cell).strip() for cell in row if cell is not None and str(cell).strip() != ""]
                                 if not clean_cells:
                                     continue
@@ -34,8 +35,8 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                 hs_code = ""
                                 hs_index = -1
                                 for idx, cell in enumerate(clean_cells):
-                                    if re.fullmatch(r'\d{8}', cell.replace(",", "")):
-                                        hs_code = cell
+                                    if re.fullmatch(r'\d{8}', cell.replace(",", "").strip()):
+                                        hs_code = cell.replace(",", "").strip()
                                         hs_index = idx
                                         break
                                         
@@ -128,13 +129,12 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
         if default_invoice_date and not "ROSC" in str(default_invoice_date):
             ws[f"J{curr_row}"] = default_invoice_date
 
-        # 🚀 डुप्लीकेट रोकने का अचूक लॉजिक (जितनी कमोडिटी उतनी ही रो, बाकी खाली)
         if all_comms:
             cell_ref_bs = f"BS{curr_row}"
             if item_idx < len(all_comms):
                 ws[cell_ref_bs] = all_comms[item_idx]
             else:
-                ws[cell_ref_bs] = "" # कमोडिटी खत्म होने पर आगे की रो खाली रहेंगी
+                ws[cell_ref_bs] = ""
             ws[cell_ref_bs].alignment = Alignment(wrap_text=True)
 
         # 1. Header fields mapping
