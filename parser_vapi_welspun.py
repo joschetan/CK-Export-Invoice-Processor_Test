@@ -44,6 +44,7 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                     
                                 dbk_sr = clean_cells[hs_index - 1] if hs_index > 0 else ""
 
+                                # 🚀 मूल और सही डिस्क्रिप्शन एक्सट्रैक्शन लॉजिक (जो हमेशा आइटम के हिसाब से सही नाम उठाएगा)
                                 description_text = ""
                                 if hs_index > 0:
                                     desc_candidates = []
@@ -166,7 +167,7 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
                 else:
                     ws[f"{col_letter}{curr_row}"] = extracted_val if item_idx == 0 else ""
 
-        # 2. 🚀 स्मार्ट ओवरराइड मैपिंग (UI के गलत नंबर इंडेक्स को नजरअंदाज करके सीधा शुद्ध डेटा भरना)
+        # 2. स्मार्ट ओवरराइड मैपिंग (UI के गलत नंबर इंडेक्स को नजरअंदाज करके सीधा शुद्ध डेटा भरना)
         for field_name, r_info in item_rules.items():
             col_letter = r_info.get("col", "").strip().upper()
             rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
