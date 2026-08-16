@@ -44,6 +44,7 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                     
                                 dbk_sr = clean_cells[hs_index - 1] if hs_index > 0 else ""
 
+                                # 🚀 सही और मूल डिस्क्रिप्शन एक्सट्रैक्शन (जो हमेशा आइटम के हिसाब से आएगा)
                                 description_text = ""
                                 if hs_index > 0:
                                     desc_candidates = []
