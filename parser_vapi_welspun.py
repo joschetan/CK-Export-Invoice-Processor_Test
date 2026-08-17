@@ -44,7 +44,7 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                     
                                 dbk_sr = clean_cells[hs_index - 1] if hs_index > 0 else ""
 
-                                # डायनेमिक डिस्क्रिप्शन (बैकअप के लिए)
+                                # डायनेमिक डिस्क्रिप्शन
                                 description_text = ""
                                 if hs_index != -1 and len(clean_cells) > hs_index + 1:
                                     desc_parts = []
@@ -61,7 +61,7 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                     desc_candidates = [clean_cells[i] for i in range(0, hs_index) if not clean_cells[i].isdigit()]
                                     description_text = " ".join(desc_candidates).strip()
 
-                                # 🚀 PART 2 (Right to Left): Nt.Wt से आगे के कॉलम पीछे से (Reverse) गिने जाएंगे
+                                # 🚀 फिक्स: SQMTR और Net Wt को उनके क्रम (Order) से सेट करना ताकि कभी इंटरचेंज न हों
                                 net_wt, qty, rate, amount_usd, taxable_inr, igst_per, igst_amt, sqmtr = "", "", "", "", "", "", "", ""
                                 
                                 if len(clean_cells) >= 4:
@@ -70,19 +70,24 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                     taxable_inr = clean_cells[-3]
                                     amount_usd = clean_cells[-4]
 
+                                decimal_3_values = []
                                 for cell in clean_cells:
                                     clean_c = cell.replace(",", "").strip()
-                                    if re.fullmatch(r'\d+\.\d{5}', clean_c):
+                                    if re.fullmatch(r'\d+\.\d{3}', clean_c):
+                                        decimal_3_values.append(cell)
+                                    elif re.fullmatch(r'\d+\.\d{5}', clean_c):
                                         if not rate:
                                             rate = cell
-                                    elif re.fullmatch(r'\d+\.\d{3}', clean_c):
-                                        if not net_wt:
-                                            net_wt = cell
-                                        elif not sqmtr and cell != net_wt:
-                                            sqmtr = cell
                                     elif clean_c.isdigit() and int(clean_c) > 0 and cell != hs_code and cell != dbk_sr:
                                         if not qty:
                                             qty = cell
+
+                                # यदि एक से ज्यादा 3-डेसिमल वैल्यू हैं (जैसे SQMTR और Net Wt दोनों)
+                                if len(decimal_3_values) >= 2:
+                                    sqmtr = decimal_3_values[0]   # पहली वैल्यू SQMTR बनेगी
+                                    net_wt = decimal_3_values[1]  # दूसरी वैल्यू हमेशा Net Wt बनेगी
+                                elif len(decimal_3_values) == 1:
+                                    net_wt = decimal_3_values[0]  # अगर सिर्फ एक है तो वह Net Wt होगी
 
                                 item_dict = {f"col_{i}": (str(row[i]).strip() if i < len(row) and row[i] else "") for i in range(len(row))}
                                 item_dict.update({
@@ -185,14 +190,12 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
             raw_val = ""
             clean_rule_val = rule_val_lower.replace("col_", "").strip()
             
-            # 🚀 स्मार्ट स्प्लिट: अगर UI में DBK, HS Code या Description के लिए फिक्स इंडेक्स (0,1,2) दिया है, तो सीधे UI की बात मानो!
             if clean_rule_val.isdigit() and col_letter in ["K", "S", "BU"]:
                 col_idx = int(clean_rule_val)
                 raw_val = item.get(f"col_{col_idx}", "")
-                if col_letter == "S": # DBK Sr के लिए पीछे "B" लगाने का लॉजिक
+                if col_letter == "S":
                     raw_val = f"{raw_val}B" if raw_val and not str(raw_val).upper().endswith("B") else raw_val
 
-            # यदि UI में नंबर नहीं है, तो पार्सर का बैकअप यूज़ करो
             elif col_letter == "K" or "hs" in rule_val_lower or "ritc" in rule_val_lower:
                 raw_val = item.get("hs_code", "")
             elif col_letter == "BU" or "desc" in rule_val_lower:
@@ -200,8 +203,6 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
             elif col_letter == "S" or "dbk" in rule_val_lower:
                 dbk = item.get("dbk_sr", "")
                 raw_val = f"{dbk}B" if dbk and not dbk.upper().endswith("B") else dbk
-                
-            # 🚀 खिसकने वाले कॉलम (Qty, Rate, Amount) के लिए UI के गलत इंडेक्स को ओवरराइड करके रिवर्स पार्सर का डेटा भरें
             elif col_letter == "AB" or "wt" in rule_val_lower or "weight" in rule_val_lower:
                 raw_val = item.get("net_wt", "")
             elif col_letter == "N" or "qty" in rule_val_lower or "quantity" in rule_val_lower:
