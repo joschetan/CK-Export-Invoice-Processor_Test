@@ -5,17 +5,62 @@ st.set_page_config(
     page_title="CK Export Invoice Processor Pro", 
     page_icon="🚢",
     layout="wide", 
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"  # साइडबार को इनेबल कर दिया ताकि प्रोफाइल अच्छे से दिखे
 )
 
-# 📌 2. साइडबार को पूरी तरह डिसेबल/हाइड करने का क्लीन CSS
+# 📌 2. साइडबार प्रोफाइल और CSS स्टाइलिंग
 st.markdown("""
     <style>
-        [data-testid="stSidebar"] { display: none !important; }
         [data-testid="stSidebarCollapseButton"] { display: none !important; }
         [data-testid="stSidebarCollapsedControl"] { display: none !important; }
+        .creator-card {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            padding: 15px;
+            border-radius: 12px;
+            color: white;
+            text-align: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
+        }
+        .creator-name {
+            font-size: 18px;
+            font-weight: 700;
+            margin-top: 8px;
+            margin-bottom: 2px;
+        }
+        .creator-title {
+            font-size: 12px;
+            color: #d1d8e0;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
     </style>
 """, unsafe_allow_html=True)
+
+# --- 🚀 CREATOR / FOUNDER PROFILE SECTION (Sidebar) ---
+with st.sidebar:
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # यहाँ आपकी फोटो सीधे रेंडर होगी
+    try:
+        st.image("ck_photo.jpg", use_container_width=True)
+    except:
+        st.info("Photo loading...")
+        
+    st.markdown("""
+        <div class="creator-card">
+            <div class="creator-name">Chetan Joshi</div>
+            <div class="creator-title">Founder & Lead Developer</div>
+            <hr style="border-color: rgba(255,255,255,0.2); margin: 8px 0;">
+            <p style='font-size: 11px; color: #f1f2f6; margin: 0;'>
+                <b>CK Export Invoice Pro v2.0</b><br>
+                Engineered for Enterprise Automation & Precision.
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("---")
 
 import pandas as pd
 import requests
