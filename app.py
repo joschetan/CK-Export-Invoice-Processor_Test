@@ -79,7 +79,7 @@ with st.sidebar:
     st.markdown("""
         <div class="creator-card">
             <div class="creator-name">Chetan Joshi</div>
-            <div class="creator-title">Developped by CK</div>
+            <div class="creator-title">📞 +91 98253 06898</div>
             <hr style="border-color: rgba(255,255,255,0.2); margin: 8px 0;">
             <p style='font-size: 11px; color: #f1f2f6; margin: 0;'>
                 <b>CK Export Invoice Pro v2.0</b><br>
