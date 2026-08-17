@@ -18,16 +18,19 @@ if not st.session_state["app_authenticated"]:
     with col2:
         st.markdown("<br><br>", unsafe_allow_html=True)
         st.markdown("<h2 style='text-align: center;'>🚢 CK Export Invoice Processor Pro</h2>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: gray;'>कृपया आगे बढ़ने के लिए ऐप का पासवर्ड दर्ज करें।</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: gray;'>कृपया आगे बढ़ने के लिए ऐप का पासवर्ड दर्ज करें। (Enter दबाकर भी लॉगिन कर सकते हैं)</p>", unsafe_allow_html=True)
         
-        pass_input = st.text_input("पासवर्ड दर्ज करें:", type="password", key="global_lock_pwd")
-        
-        if st.button("Unlock App", use_container_width=True, type="primary"):
-            if pass_input == "CK":
-                st.session_state["app_authenticated"] = True
-                st.rerun()
-            else:
-                st.error("❌ गलत पासवर्ड! कृपया सही पासवर्ड दर्ज करें।")
+        # 🚀 Form का उपयोग ताकि Enter दबाने पर सीधे लॉगिन हो जाए
+        with st.form(key="login_form"):
+            pass_input = st.text_input("पासवर्ड दर्ज करें:", type="password", key="global_lock_pwd")
+            submit_button = st.form_submit_button("Unlock App", use_container_width=True, type="primary")
+            
+            if submit_button:
+                if pass_input == "CK":
+                    st.session_state["app_authenticated"] = True
+                    st.rerun()
+                else:
+                    st.error("❌ गलत पासवर्ड! कृपया सही पासवर्ड दर्ज करें।")
     
     # जब तक पासवर्ड सही न हो, आगे का कोड रन न हो
     st.stop()
