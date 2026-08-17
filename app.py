@@ -8,7 +8,35 @@ st.set_page_config(
     initial_sidebar_state="expanded"  # साइडबार को इनेबल कर दिया ताकि प्रोफाइल अच्छे से दिखे
 )
 
-# 📌 2. साइडबार प्रोफाइल और CSS स्टाइलिंग
+# 📌 2. सेशन स्टेट इनिशियलाइज़ेशन (ग्लोबल ऐप लॉक के लिए)
+if "app_authenticated" not in st.session_state:
+    st.session_state["app_authenticated"] = False
+
+# 🔒 यदि ऐप अनलॉक नहीं है, तो पहले पासवर्ड स्क्रीन दिखाएँ
+if not st.session_state["app_authenticated"]:
+    col1, col2, col3 = st.columns([1, 1.5, 1])
+    with col2:
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center;'>🔐 Restricted Access</h2>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: gray;'>कृपया आगे बढ़ने के लिए ऐप का पासवर्ड दर्ज करें।</p>", unsafe_allow_html=True)
+        
+        pass_input = st.text_input("पासवर्ड दर्ज करें:", type="password", key="global_lock_pwd")
+        
+        if st.button("Unlock App", use_container_width=True, type="primary"):
+            if pass_input == "CK":
+                st.session_state["app_authenticated"] = True
+                st.rerun()
+            else:
+                st.error("❌ गलत पासवर्ड! कृपया सही पासवर्ड दर्ज करें।")
+    
+    # जब तक पासवर्ड सही न हो, आगे का कोड रन न हो
+    st.stop()
+
+# ==========================================
+# 🚀 पासवर्ड सही होने के बाद दिखने वाला मुख्य ऐप कोड
+# ==========================================
+
+# 📌 साइडबार प्रोफाइल और CSS स्टाइलिंग
 st.markdown("""
     <style>
         [data-testid="stSidebarCollapseButton"] { display: none !important; }
@@ -60,6 +88,11 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
     
+    # ऐप लॉक आउट बटन (साइडबार में)
+    if st.button("🔒 Lock App", use_container_width=True):
+        st.session_state["app_authenticated"] = False
+        st.rerun()
+        
     st.markdown("---")
 
 import pandas as pd
@@ -218,7 +251,7 @@ else:
         with st.expander("🛠️ Admin Settings Access"):
             pwd = st.text_input("एडमिन पासवर्ड दर्ज करें:", type="password", key="main_admin_pwd")
             if st.button("लॉगिन करें"):
-                if pwd == "admin":
+                if pwd == "CK":
                     st.session_state["admin_authenticated"] = True
                     st.rerun()
                 else:
