@@ -42,30 +42,26 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                 if not hs_code:
                                     continue
                                     
-                                # 1. PART 1 (Left to Right): DBK Sr
                                 dbk_sr = clean_cells[hs_index - 1] if hs_index > 0 else ""
 
-                                # 🚀 स्मार्ट डायनेमिक डिस्क्रिप्शन एक्सट्रैक्शन (HS Code के बाद और नंबर/साइज से पहले का सारा टेक्स्ट)
+                                # डायनेमिक डिस्क्रिप्शन (बैकअप के लिए)
                                 description_text = ""
                                 if hs_index != -1 and len(clean_cells) > hs_index + 1:
                                     desc_parts = []
                                     for idx in range(hs_index + 1, len(clean_cells)):
                                         cell_val = clean_cells[idx]
-                                        # यदि वजन, डेसिमल वैल्यू या साइज (जैसे 50 X 80) आ जाए तो रुक जाना है
                                         if re.fullmatch(r'\d+\.\d+', cell_val) or re.fullmatch(r'\d+\s*[xX]\s*\d+', cell_val):
                                             break
                                         if cell_val.isdigit() and int(cell_val) > 99 and len(desc_parts) > 0:
                                             break
                                         desc_parts.append(cell_val)
-                                    
                                     description_text = " ".join(desc_parts).strip()
 
-                                # फॉलबैक यदि खाली रहे
                                 if not description_text and hs_index > 0:
                                     desc_candidates = [clean_cells[i] for i in range(0, hs_index) if not clean_cells[i].isdigit()]
                                     description_text = " ".join(desc_candidates).strip()
 
-                                # 2. PART 2 (Right to Left): Nt.Wt से आगे के कॉलम पीछे से (Reverse) गिने जाएंगे
+                                # 🚀 PART 2 (Right to Left): Nt.Wt से आगे के कॉलम पीछे से (Reverse) गिने जाएंगे
                                 net_wt, qty, rate, amount_usd, taxable_inr, igst_per, igst_amt, sqmtr = "", "", "", "", "", "", "", ""
                                 
                                 if len(clean_cells) >= 4:
@@ -74,7 +70,6 @@ def extract_vapi_welspun_items(pdf_lines, pdf_text=""):
                                     taxable_inr = clean_cells[-3]
                                     amount_usd = clean_cells[-4]
 
-                                # बीच के वैल्यूज़ पैटर्न और रिवर्स एंकर से
                                 for cell in clean_cells:
                                     clean_c = cell.replace(",", "").strip()
                                     if re.fullmatch(r'\d+\.\d{5}', clean_c):
@@ -154,7 +149,6 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
                 ws[cell_ref_bs] = ""
             ws[cell_ref_bs].alignment = Alignment(wrap_text=True)
 
-        # 1. Header fields mapping
         for field_name, r_info in item_rules.items():
             col_letter = r_info.get("col", "").strip().upper()
             rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
@@ -175,7 +169,6 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
                 else:
                     ws[f"{col_letter}{curr_row}"] = extracted_val if item_idx == 0 else ""
 
-        # 2. Item Table Mapping (आगे और पीछे दोनों का परफेक्ट कॉम्बिनेशन)
         for field_name, r_info in item_rules.items():
             col_letter = r_info.get("col", "").strip().upper()
             rule_type_raw = str(r_info.get("type", "PDF Row Item")).strip()
@@ -190,14 +183,25 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
                 
             cell_ref = f"{col_letter}{curr_row}"
             raw_val = ""
+            clean_rule_val = rule_val_lower.replace("col_", "").strip()
             
-            if col_letter == "K" or "hs" in rule_val_lower or "ritc" in rule_val_lower:
+            # 🚀 स्मार्ट स्प्लिट: अगर UI में DBK, HS Code या Description के लिए फिक्स इंडेक्स (0,1,2) दिया है, तो सीधे UI की बात मानो!
+            if clean_rule_val.isdigit() and col_letter in ["K", "S", "BU"]:
+                col_idx = int(clean_rule_val)
+                raw_val = item.get(f"col_{col_idx}", "")
+                if col_letter == "S": # DBK Sr के लिए पीछे "B" लगाने का लॉजिक
+                    raw_val = f"{raw_val}B" if raw_val and not str(raw_val).upper().endswith("B") else raw_val
+
+            # यदि UI में नंबर नहीं है, तो पार्सर का बैकअप यूज़ करो
+            elif col_letter == "K" or "hs" in rule_val_lower or "ritc" in rule_val_lower:
                 raw_val = item.get("hs_code", "")
             elif col_letter == "BU" or "desc" in rule_val_lower:
                 raw_val = item.get("description_text", "")
             elif col_letter == "S" or "dbk" in rule_val_lower:
                 dbk = item.get("dbk_sr", "")
                 raw_val = f"{dbk}B" if dbk and not dbk.upper().endswith("B") else dbk
+                
+            # 🚀 खिसकने वाले कॉलम (Qty, Rate, Amount) के लिए UI के गलत इंडेक्स को ओवरराइड करके रिवर्स पार्सर का डेटा भरें
             elif col_letter == "AB" or "wt" in rule_val_lower or "weight" in rule_val_lower:
                 raw_val = item.get("net_wt", "")
             elif col_letter == "N" or "qty" in rule_val_lower or "quantity" in rule_val_lower:
@@ -215,7 +219,6 @@ def map_vapi_welspun_items_to_excel_dynamic(ws, parsed_items, item_rules, inv_sr
             elif col_letter == "Z" or "sqmtr" in rule_val_lower:
                 raw_val = item.get("sqmtr", "")
             else:
-                clean_rule_val = rule_val_lower.replace("col_", "").strip()
                 if clean_rule_val.isdigit():
                     col_idx = int(clean_rule_val)
                     raw_val = item.get(f"col_{col_idx}", "")
