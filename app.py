@@ -254,7 +254,7 @@ else:
         with st.expander("🛠️ Admin Settings Access"):
             pwd = st.text_input("एडमिन पासवर्ड दर्ज करें:", type="password", key="main_admin_pwd")
             if st.button("लॉगिन करें"):
-                if pwd == "CK":
+                if pwd == "CK@SOHAM":
                     st.session_state["admin_authenticated"] = True
                     st.rerun()
                 else:
