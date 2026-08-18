@@ -18,7 +18,7 @@ if not st.session_state["app_authenticated"]:
     with col2:
         st.markdown("<br><br>", unsafe_allow_html=True)
         st.markdown("<h2 style='text-align: center;'>🚢 CK Export Invoice Processor Pro</h2>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: gray;'>कृपया आगे बढ़ने के लिए ऐप का पासवर्ड दर्ज करें। (Enter दबाकर भी लॉगिन कर सकते हैं)</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: gray;'>कृपया आगे बढ़ने के लिए ऐप का पासवर्ड दर्ज करें।</p>", unsafe_allow_html=True)
         
         # 🚀 Form का उपयोग ताकि Enter दबाने पर सीधे लॉगिन हो जाए
         with st.form(key="login_form"):
