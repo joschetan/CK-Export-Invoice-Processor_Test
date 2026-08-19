@@ -103,8 +103,8 @@ import requests
 import json
 import base64
 
-WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwEsmWdnkVW3H7_fD99vPMrqhvmY6iJHP1ZooKuwDlj2VE4cht_FBgFyem9xDRFlbjuNw/exec"
-SPREADSHEET_ID = "182qRuH7R0jZqWVKHCg_oAG1SK5CUSkQpxVPxH2O8QUQ"
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwYVVWbqNZbzTOujVmip41KlID-rf9zEQLy_JM04ZEhUL-kixwRMD9nbPnOrZ46Fmz3/exec"
+SPREADSHEET_ID = "1DKfouxtJlWvyhQ-8MY-Goi75dPpnXB44Y13YFdUhy48"
 
 @st.cache_data(show_spinner=False)
 def load_data_from_gsheet():
